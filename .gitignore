@@ -1,0 +1,8 @@
+node_modules/
+.pnpm-store/
+dist/
+dist-electron/
+release/
+test-results/
+playwright-report/
+*.log

@@ -1,0 +1,15 @@
+{
+  "name": "screenshot-landing",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "packageManager": "pnpm@8.15.9",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm typecheck && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": { "react": "19.2.8", "react-dom": "19.2.8", "lucide-react": "1.43.0" },
+  "devDependencies": { "@types/react": "19.2.18", "@types/react-dom": "19.2.7", "@vitejs/plugin-react": "6.1.1", "typescript": "7.0.2", "vite": "8.2.2" }
+}

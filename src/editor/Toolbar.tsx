@@ -1,0 +1,16 @@
+import { MousePointer2, MoveUpRight, Square, Circle, Pencil, Droplets, Trash2, Copy, Download, X, Type, Smile } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { useEditor } from '../stores/editor';
+import type { Tool } from './model';
+import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group';
+import { Separator } from '../components/ui/separator';
+const tools = [{ id: 'select', label: 'Select', icon: MousePointer2 }, { id: 'arrow', label: 'Arrow', icon: MoveUpRight }, { id: 'rectangle', label: 'Rectangle (Shift for square)', icon: Square }, { id: 'circle', label: 'Circle', icon: Circle }, { id: 'freehand', label: 'Freehand', icon: Pencil }, { id: 'blurStroke', label: 'Blur pen', icon: Droplets }, { id: 'text', label: 'Text', icon: Type }, { id: 'emoji', label: 'Emoji', icon: Smile }] as const;
+export function Toolbar({ busy, ready, output, cancel, chooseTool }: { busy: boolean; ready: boolean; output(action: 'copy' | 'save'): void; cancel(): void; chooseTool(tool: Tool): void }) {
+  const s = useEditor(); const selected = s.annotations.find(a => a.id === s.selectedId);
+  const type = selected?.type ?? s.tool;
+  const size = Math.round((type === 'text' ? (selected?.type === 'text' ? selected.fontSize : s.textSize) : type === 'emoji' ? (selected?.type === 'emoji' ? selected.size : s.emojiSize) : s.tool === 'blurStroke' ? s.blurWidth : s.width) * 10) / 10;
+  return <div className="toolbar" role="toolbar" aria-label="Annotation tools"><label title="Stroke color"><input className="size-9 cursor-pointer" aria-label="Stroke color" type="color" value={s.color} disabled={type === 'blurStroke' || type === 'emoji' || busy} onChange={e => s.setColor(e.target.value)} /></label>
+    <label className="flex items-center gap-2 text-xs text-muted-foreground" title="Size in original image pixels">Size<input className="w-20" aria-label="Brush size" type="range" min={type === 'text' ? 12 : type === 'emoji' ? 16 : 1} max={type === 'text' || type === 'blurStroke' ? 160 : type === 'emoji' ? 256 : 24} value={size} disabled={busy} onChange={e => s.setWidth(Number(e.target.value))} /><span className="w-6">{size}</span></label><div className="h-7 mx-1"><Separator orientation="vertical" /></div>
+    <ToggleGroup type="single" spacing={1} value={s.tool} onValueChange={tool => { if (tool) chooseTool(tool as Tool); }} disabled={busy || !ready} aria-label="Drawing tool">{tools.map(({ id, label, icon: Icon }) => <ToggleGroupItem key={id} value={id} size="lg" aria-label={label} title={label} onClick={() => { if (id === 'emoji' && s.tool === 'emoji') chooseTool('emoji'); }}><Icon /></ToggleGroupItem>)}</ToggleGroup>
+    <Button size="icon" variant="ghost" aria-label="Delete selected object" title="Delete selected object" disabled={!s.selectedId || busy} onClick={s.remove}><Trash2 /></Button><span className="flex-1" /><Button variant="outline" disabled={busy || !ready} onClick={() => output('copy')}><Copy />Copy</Button><Button disabled={busy || !ready} onClick={() => output('save')}><Download />Save</Button><Button variant="ghost" disabled={busy} onClick={cancel}><X />Cancel</Button></div>;
+}

@@ -1,0 +1,23 @@
+appId: local.windows.screenshot
+productName: Screenshot
+electronDist: node_modules/electron/dist
+electronLanguages:
+  - en-US
+  - vi
+directories:
+  output: release/windows-x64
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - assets/icon.ico
+  - assets/capture-frame.html
+  - package.json
+win:
+  target: nsis
+  icon: assets/logo.png
+  signExecutable: false
+nsis:
+  artifactName: Screenshot-Setup-${version}-windows-${arch}.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
