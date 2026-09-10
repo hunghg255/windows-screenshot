@@ -6,7 +6,8 @@ export type Drawing = (Base & { type: 'arrow' | 'rectangle' | 'circle'; color: s
 export type TextAnnotation = { id: string; type: 'text'; position: Point; content: string; color: string; fontFamily: 'Segoe UI'; fontSize: number; lineHeight: number; rotation?: number };
 export type EmojiAnnotation = { id: string; type: 'emoji'; position: Point; content: string; size: number; rotation?: number };
 export type GlyphAnnotation = TextAnnotation | EmojiAnnotation;
-export type Annotation = Drawing | GlyphAnnotation;
+export type ImageAnnotation = { id: string; type: 'image'; assetId: string; position: Point; width: number; height: number; rotation?: number };
+export type Annotation = Drawing | GlyphAnnotation | ImageAnnotation;
 export function shapeEnd(start: Point, end: Point, square: boolean, size: { width: number; height: number }): Point {
   if (!square) return end;
   const dx = end.x - start.x, dy = end.y - start.y;
@@ -18,4 +19,4 @@ export function arrowHead(start: Point, end: Point, width: number): Point[] {
   const length = Math.min(Math.hypot(end.x - start.x, end.y - start.y) * .6, Math.max(12, width * 3));
   return [-Math.PI / 6, Math.PI / 6].map(offset => ({ x: end.x - length * Math.cos(angle + offset), y: end.y - length * Math.sin(angle + offset) }));
 }
-export function nonEmpty(a: Annotation) { return 'content' in a ? !!a.content.trim() : 'points' in a ? a.points.length > 0 : Math.hypot(a.end.x - a.start.x, a.end.y - a.start.y) >= 2; }
+export function nonEmpty(a: Annotation) { return a.type === 'image' ? a.width > 0 && a.height > 0 : 'content' in a ? !!a.content.trim() : 'points' in a ? a.points.length > 0 : Math.hypot(a.end.x - a.start.x, a.end.y - a.start.y) >= 2; }

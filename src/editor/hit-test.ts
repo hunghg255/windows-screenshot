@@ -10,6 +10,7 @@ export function segmentDistance(p: Point, a: Point, b: Point) {
 export function hit(a: Annotation, p: Point, tolerance: number) {
   const rotation = rotationOf(a);
   if (rotation) return hit({ ...a, rotation: 0 }, rotatePoint(p, boxCenter(frameBounds(a)), -rotation), tolerance);
+  if (a.type === 'image') { const b = frameBounds(a); return p.x >= b.x - tolerance && p.x <= b.right + tolerance && p.y >= b.y - tolerance && p.y <= b.bottom + tolerance; }
   if (a.type === 'rectangle' && a.transform) return hit({ ...a, start: transformPoint(a.start, a.transform ?? identity), end: transformPoint(a.end, a.transform ?? identity), transform: undefined }, p, tolerance);
   if ('transform' in a && a.transform) return hit({ ...a, transform: undefined }, inversePoint(p, a.transform), tolerance / Math.min(a.transform.sx, a.transform.sy));
   if (a.type === 'text' || a.type === 'emoji') { const b = measureGlyph(a).bounds; return p.x >= b.x - tolerance && p.x <= b.right + tolerance && p.y >= b.y - tolerance && p.y <= b.bottom + tolerance; }

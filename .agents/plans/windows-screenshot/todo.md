@@ -834,3 +834,100 @@ Thứ tự: 23 → 24 → 25 → 26 → 27. Các task mới đã triển khai tr
 - [x] Phần chưa nghiệm thu được nêu rõ; tài liệu và bản build sẵn sàng review.
 
 Thứ tự thực hiện: 28 → 29 → 30 → 31 → 32 → 33. Đã triển khai theo yêu cầu “implement đi”. Typecheck/build, 89 unit tests và 14/14 desktop E2E cuối đạt; 11/11 tests trên executable đóng gói đạt. Kết quả desktop đầy đủ và các lần chạy lại ghi tại docs/windows-qa.md. Các checkbox còn mở chứa nghiệm thu manual/IME/native Save/DPI chưa thực hiện; không thay đổi Task 01–27.
+
+## Bổ sung Chèn ảnh: Task 34–39 (2026-09-10)
+
+Status: implemented, needs manual review. Giữ nguyên Task 01–33 và bằng chứng lịch sử. Quyết định/phạm vi ở task.md; evidence chi tiết ở docs/windows-qa.md.
+
+## Task 34: Hợp đồng chọn ảnh và kiểm tra đầu vào
+**Description:** IPC importImage qua main/preload, chọn PNG/JPG/JPEG/SVG/WebP, validate file và session.
+**Acceptance criteria:**
+- [x] API hẹp, chỉ editor/session hợp lệ; cancel/error rõ ràng, không nhận đường dẫn từ renderer, khóa request trùng.
+- [x] Giới hạn byte/header/dimensions, kiểm tra SVG trong sandbox trước decode; JPEG EXIF đúng hướng, WebP/APNG dùng frame đầu.
+- [x] Kiểm tra phiên sau await; finally giải phóng lock, không ghi ảnh tạm/log bytes trong ứng dụng.
+**Verification:**
+- [x] tests/image-import.test.ts; tests/e2e/image-import.spec.ts; tests/e2e/screenshot.spec.ts kiểm tra Settings bị từ chối.
+- [x] pnpm.cmd typecheck; pnpm.cmd build.
+- [ ] Manual native Open dialog, Escape/focus và session close trong lúc chooser mở.
+**Dependencies:** nền tảng hiện có.
+**Files:** shared/image-import.ts, shared/contracts.ts, electron/image-import.ts, electron/main.ts, electron/preload.cts.
+**Scope:** M, 5 module và test liên quan.
+
+## Task 35: Đối tượng ảnh và cache render
+**Description:** Annotation image, parser SVG, cache theo phiên và composition chung preview/export.
+**Acceptance criteria:**
+- [x] Geometry image riêng, bounds/hit-test/nonEmpty đúng; không áp glyph font-size logic cho image.
+- [x] Raster decode một lần, SVG giữ nguồn đã kiểm tra và raster cache theo size; preview/export cùng composition canvas, giữ alpha/thứ tự lớp.
+- [x] Giới hạn memory, thiếu asset báo lỗi; delete/reset/unmount dọn tài nguyên và stale decode không trả asset vào phiên mới.
+**Verification:**
+- [x] Image E2E: SVG bị từ chối, asset release/stale decode, clipboard bitmap khớp preview; unit geometry.
+- [x] Build/typecheck đạt; render/rotation-render E2E cũ đạt, 4K p95 9.10 ms.
+- [ ] Stress nhiều ảnh lớn, SVG phức tạp và đo ngân sách bộ nhớ tổng app.
+**Dependencies:** 34.
+**Files:** src/editor/model.ts, image-assets.ts, svg-source.ts, render.ts; shared/image-import.ts và test liên quan.
+**Scope:** L, đã chia validation/decode/render trong quá trình thực hiện.
+
+## Checkpoint sau Task 34–35
+- [x] Năm đuôi file được decode/render/export; WebP/APNG frame đầu và EXIF được kiểm chứng bằng fixture.
+- [x] Build/unit tests đạt; giới hạn SVG được ghi trong README.
+
+## Task 36: Nút Chèn ảnh và vòng đời editor
+**Description:** Toolbar mở chooser, thêm ảnh ở tâm, tự chọn và chuyển Select.
+**Acceptance criteria:**
+- [x] Button label/tooltip, chọn file thêm một đối tượng, fit 60% mỗi chiều và chèn nhiều ảnh.
+- [x] Busy ngăn import/export xung đột; cancel giữ nội dung; kết quả phiên cũ bị bỏ.
+- [x] Xóa/reset dọn asset; state dùng Zustand selectors hiện có.
+**Verification:**
+- [x] Image E2E qua main/preload/file read; cancel và delete đạt; build/typecheck đạt.
+- [ ] Manual mở/hủy/chọn lại file với chooser Windows thật.
+**Dependencies:** 35.
+**Files:** src/editor/Toolbar.tsx, src/editor/Editor.tsx, tests/e2e/image-import.spec.ts.
+**Scope:** M.
+
+## Task 37: Di chuyển, resize và xoay ảnh
+**Description:** Tám handle, geometry local, neo đối diện và hit-test cho image.
+**Acceptance criteria:**
+- [x] Move, resize hai chiều, Shift corner giữ tỷ lệ; min 2 px, không flip; giới hạn pixel/dimensions.
+- [x] Rotate 360°, Shift snap 15°; resize sau rotate giữ neo; chọn theo khung ảnh gồm vùng alpha trong suốt.
+- [x] Dùng cơ chế snapshot/cancel hiện có; geometry các loại cũ qua regression.
+**Verification:**
+- [x] tests/image-size.test.ts kiểm tra tám neo ở góc 45°; image E2E kiểm tra resize ở 90°; transform/rotation/hit-test regression đạt.
+- [ ] Manual mọi edge/zoom/DPI và pointer interruption trên image.
+**Dependencies:** 36.
+**Files:** src/editor/transform.ts, src/editor/hit-test.ts, tests/image-size.test.ts, tests/e2e/image-import.spec.ts.
+**Scope:** M.
+
+## Checkpoint sau Task 36–37
+- [x] Chọn/chèn/resize/rotate/delete đạt trong Electron; kiểu cũ không có regression được quan sát.
+- [ ] Native dialog/DPI khác 100% còn manual.
+
+## Task 38: Nhập kích thước W/H
+**Description:** ImageSizeControls thay nhóm brush style khi chọn ảnh.
+**Acceptance criteria:**
+- [x] W/H theo pixel, khóa tỷ lệ mặc định bật; đồng bộ sau drag.
+- [x] Commit giữ tâm/góc; input invalid hoặc vượt biên/ngân sách không đổi geometry và báo lỗi.
+- [x] Enter/blur commit, Escape hoàn nguyên, không kích hoạt phím canvas; nhóm W/H không chồng drawing tools.
+**Verification:**
+- [x] Unit numeric sizing và image E2E Enter/Escape/W/H/overlap đạt; synthetic UI screenshot được kiểm tra.
+- [x] Build/typecheck đạt.
+**Dependencies:** 37.
+**Files:** src/editor/ImageSizeControls.tsx, image-size.ts, Toolbar.tsx, Editor.tsx, tests/image-size.test.ts.
+**Scope:** M.
+
+## Task 39: Nghiệm thu import và xuất ảnh
+**Description:** Electron E2E, fixture định dạng, review UI và tài liệu.
+**Acceptance criteria:**
+- [x] PNG/JPG/JPEG/SVG/WebP import; WebP/APNG khung đầu, JPEG EXIF; W/H/rotate/resize/delete/cancel, clipboard pixel equality, Save integration.
+- [x] SVG script/external resource/animation/cyclic use bị từ chối; asset release và stale decode được kiểm chứng.
+- [x] README, docs/windows-qa.md và plan cập nhật; ảnh UI chỉ dùng nền tổng hợp, không chứa desktop.
+**Verification:**
+- [x] 95 unit tests; build/typecheck; 14 E2E cũ qua full run/focused rerun và 1 image E2E cuối đạt.
+- [x] Synthetic UI tại test-results/image-import-layout-verified/image-import-insert-all-im-af385-cel-export-and-validate-SVG/image-import-ui.png đã review.
+- [ ] Native Open/Save/clipboard paste thủ công; DPI 125/150/200%, physical 4K; stress ảnh lớn và SVG thực tế.
+**Dependencies:** 34–38.
+**Files:** tests/e2e/image-import.spec.ts, tests/fixtures/image-formats.ts, tests/e2e/screenshot.spec.ts, README.md, docs/windows-qa.md.
+**Scope:** M.
+
+## Checkpoint hoàn tất phần code
+- [x] Code, build và automated validation hoàn tất; giới hạn/manual còn thiếu được ghi rõ.
+- [ ] Nghiệm thu manual/hardware còn lại; chưa tạo installer, commit hoặc phát hành cho thay đổi này.

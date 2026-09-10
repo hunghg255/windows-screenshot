@@ -2,9 +2,10 @@ import { arrowHead, type Annotation } from './model';
 import { glyphFont, measureGlyph } from './glyph-layout';
 import { annotationBounds, boxCenter, frameBounds, identity, rotationOf, transformPoint } from './transform';
 export { annotationBounds } from './transform';
-export function paint(ctx: CanvasRenderingContext2D, a: Annotation, override?: string) {
+export function paint(ctx: CanvasRenderingContext2D, a: Annotation, override?: string, asset?: (id: string, width?: number, height?: number) => CanvasImageSource) {
   const rotation = rotationOf(a);
-  if (rotation) { const center = boxCenter(frameBounds(a)); ctx.save(); ctx.translate(center.x, center.y); ctx.rotate(rotation); ctx.translate(-center.x, -center.y); paint(ctx, { ...a, rotation: 0 }, override); ctx.restore(); return; }
+  if (rotation) { const center = boxCenter(frameBounds(a)); ctx.save(); try { ctx.translate(center.x, center.y); ctx.rotate(rotation); ctx.translate(-center.x, -center.y); paint(ctx, { ...a, rotation: 0 }, override, asset); } finally { ctx.restore(); } return; }
+  if (a.type === 'image') { if (!asset) throw new Error('Missing image assets.'); ctx.drawImage(asset(a.assetId, a.width, a.height), a.position.x, a.position.y, a.width, a.height); return; }
   if (a.type === 'rectangle') {
     const start = transformPoint(a.start, a.transform ?? identity), end = transformPoint(a.end, a.transform ?? identity);
     ctx.strokeStyle = override ?? a.color; ctx.lineWidth = a.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -35,11 +36,13 @@ function canvas(width: number, height: number) {
   c.getContext('2d', { willReadFrequently: true }); return c;
 }
 export class Renderer {
+  private composite: HTMLCanvasElement;
   private blurred: HTMLCanvasElement;
   private mask: HTMLCanvasElement;
   private previous = new WeakMap<HTMLCanvasElement, Annotation[]>();
-  constructor(private original: HTMLImageElement) {
+  constructor(private original: HTMLImageElement, private asset?: (id: string, width?: number, height?: number) => CanvasImageSource) {
     const { naturalWidth: width, naturalHeight: height } = original;
+    this.composite = canvas(width, height);
     this.blurred = canvas(width, height); this.mask = canvas(width, height);
     const ctx = this.blurred.getContext('2d')!;
     // Extend edges before blur to avoid transparent/dark borders.
@@ -53,6 +56,13 @@ export class Renderer {
     padded.width = 0;
   }
   render(target: HTMLCanvasElement, annotations: Annotation[]) {
+    this.renderComposite(annotations);
+    const ctx = target.getContext('2d', { willReadFrequently: true })!;
+    ctx.clearRect(0, 0, target.width, target.height); ctx.drawImage(this.composite, 0, 0);
+  }
+  private renderComposite(annotations: Annotation[]) {
+    const target = this.composite;
+    for (const a of annotations) if (a.type === 'image') { if (!this.asset) throw new Error('Missing image assets.'); this.asset(a.assetId, a.width, a.height); }
     const previous = this.previous.get(target);
     let x = 0, y = 0, width = target.width, height = target.height;
     if (previous) {
@@ -76,13 +86,13 @@ export class Renderer {
       m.globalCompositeOperation = 'source-in'; m.drawImage(this.blurred, x, y, width, height, x, y, width, height); m.restore();
       ctx.drawImage(this.mask, x, y, width, height, x, y, width, height);
     }
-    annotations.filter(a => a.type !== 'blurStroke').forEach(a => paint(ctx, a));
+    annotations.filter(a => a.type !== 'blurStroke').forEach(a => paint(ctx, a, undefined, this.asset));
     ctx.restore();
   }
-  invalidate(target: HTMLCanvasElement) { this.previous.delete(target); }
+  invalidate(_target: HTMLCanvasElement) { this.previous.delete(this.composite); }
   export(annotations: Annotation[]) {
-    const c = canvas(this.original.naturalWidth, this.original.naturalHeight); this.render(c, annotations);
-    const png = c.toDataURL('image/png'); c.width = 0; return png;
+    this.renderComposite(annotations);
+    return this.composite.toDataURL('image/png');
   }
-  dispose() { this.blurred.width = 0; this.mask.width = 0; }
+  dispose() { this.composite.width = 0; this.blurred.width = 0; this.mask.width = 0; }
 }

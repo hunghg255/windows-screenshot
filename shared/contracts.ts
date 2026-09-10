@@ -9,6 +9,7 @@ export type Settings = { shortcuts: Shortcuts; lastDirectory?: string };
 export type CaptureData = { id: string; image: string; width: number; height: number; mode: CaptureMode; displayId: number };
 export type Result<T = undefined> = { ok: true; value: T } | { ok: false; error: string };
 export interface ScreenshotAPI {
+  importImage(id: string): Promise<Result<import('./image-import').ImportedImage | null>>;
   settings(): Promise<Result<{ settings: Settings; warning: string }>>;
   updateShortcuts(value: Shortcuts): Promise<Result<Settings>>;
   displays(): Promise<Result<{ displays: DisplayInfo[]; defaultId: number }>>;

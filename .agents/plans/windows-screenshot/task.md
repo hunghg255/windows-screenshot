@@ -265,3 +265,56 @@ Trạng thái Task 16–22: code đã triển khai trong 0.2.0, needs review cho
 - Rotation dùng helper chung trong transform.ts (render.ts re-export bounds), oriented handles và neo world; inverse hit-test, dirty AABB và export đồng bộ. Glyph composer/slider bù translation để giữ điểm đặt trên ảnh khi layout và tâm thay đổi trong preview; tâm drag luôn cố định từ snapshot.
 - Typecheck/build, 89 unit tests và 14/14 desktop E2E cuối đạt; 11/11 tests trên Screenshot.exe đóng gói đạt. Kết quả desktop, timing 4K và lần chạy lại được ghi trong docs/windows-qa.md. Có ảnh QA nền tổng hợp tại docs/images/rotation-preview.png.
 - Installer local: release/windows-x64-rotation/Screenshot-Setup-0.3.3-windows-x64.exe. Giữ package version 0.3.3, không commit/tag/publish. Native Save/IME, DPI vật lý 125/150/200% và mixed DPI, Windows 11 và installer wizard vẫn chưa nghiệm thu.
+## Bổ sung: Chèn ảnh và biến đổi đối tượng ảnh (2026-09-10)
+
+**Status: implemented, needs manual review — đã triển khai sau yêu cầu “làm tiếp”.** Yêu cầu cập nhật kế hoạch; Task 34–39 trong todo.md là phần bổ sung. Giữ nguyên trạng thái và nghiệm thu Task 01–33.
+
+### Kết luận khả thi và bằng chứng
+
+- Khả thi, mức thay đổi vừa, chưa thấy cần thêm thư viện canvas. Annotation hiện chỉ có drawing/text/emoji trong src/editor/model.ts; cần thêm loại image.
+- src/editor/transform.ts đã có move, resize theo trục local, neo đối diện và rotation; SelectionHandles.tsx đã có tám handle và nút xoay. Cần mở rộng canRotate, frameBounds, resizeLocal và hit-test cho image. Đặc biệt không dùng kiểm tra 'position' in a để coi mọi đối tượng có position là glyph: ảnh cũng có position nhưng phải resize theo width/height.
+- src/editor/render.ts dùng chung Renderer cho preview/export và dirty-region theo bounds. Thêm drawImage vào pipeline này, dùng cache ảnh đã decode và nguồn SVG đã kiểm tra, tránh decode ở mỗi pointermove hoặc xuất thiếu ảnh chưa sẵn sàng.
+- electron/main.ts đã có dialog Save, kiểm tra sender/session và IPC hẹp; shared/contracts.ts và electron/preload.cts chưa có import ảnh. Bổ sung một API chỉ chọn/đọc ảnh do người dùng chọn.
+- src/stores/editor.ts có add/replace/remove/reset, chưa có undo/redo. Tính năng mới dùng các thao tác hiện có, không đưa undo/redo vào phạm vi.
+- Electron hỗ trợ hộp thoại native chọn file với filters và cửa sổ cha: https://www.electronjs.org/docs/latest/api/dialog . Dùng openFile, không openDirectory: người dùng duyệt thư mục rồi chọn một file ảnh.
+
+### Hành vi và phạm vi đề xuất
+
+1. Nút Chèn ảnh trên toolbar có tooltip/accessible label, mở hộp thoại Windows chọn một PNG, JPG, JPEG, SVG hoặc WebP mỗi lần; có thể lặp lại để chèn nhiều ảnh. Đây là đối tượng phủ lên screenshot hiện tại, không thay ảnh nền.
+2. Chèn ở tâm screenshot, tự chọn đối tượng và chuyển sang Select. Kích thước khởi tạo giữ tỷ lệ gốc, không phóng lớn ảnh nhỏ, giới hạn trong 60% chiều rộng và chiều cao screenshot để thấy các handle. Tất cả tọa độ/kích thước lưu theo pixel screenshot gốc.
+3. Kéo di chuyển; tám handle resize, mặc định đổi hai chiều độc lập như rectangle; Shift + kéo góc giữ tỷ lệ hiện tại. Kích thước tối thiểu 2 px mỗi chiều, không flip. Xoay tự do 360° quanh tâm, Shift snap 15°, giữ hành vi clamp/clip và hủy drag như editor hiện có.
+4. Khi chọn ảnh, thay điều khiển màu/độ dày bút bằng ô W/H theo pixel và khóa tỷ lệ (mặc định bật). Nhập size giữ tâm và góc, khóa tỷ lệ dùng tỷ lệ hiện tại; giá trị không hữu hạn, âm hoặc quá giới hạn bị từ chối. Áp dụng cùng giới hạn biên như resize kéo; nếu kích thước không phù hợp thì báo lỗi và giữ giá trị cũ. Không mở rộng canvas. Enter/blur commit giá trị hợp lệ, Escape hoàn nguyên; không kích hoạt phím xóa/hủy phiên khi đang gõ.
+5. Ảnh mới nằm trên các annotation trước; chọn theo thứ tự hiển thị, click cả vùng trong suốt trong khung ảnh vẫn chọn được. Xóa bằng Delete/nút Xóa. PNG, SVG và WebP giữ alpha; rotate/resize không làm đổi dữ liệu nguồn. Copy/Save flatten ảnh đúng vị trí/kích thước/góc ở độ phân giải screenshot.
+6. Hủy dialog không thay đổi editor. Khóa thao tác import trùng và Copy/Save trong lúc import/decode; chặn mở dialog khi đang vẽ/drag/composer/picker. Trả focus về canvas; Escape ở dialog chỉ hủy dialog. Nếu phiên kết thúc trong lúc chờ, bỏ kết quả và giải phóng tài nguyên.
+7. V1 không gồm phát animation, GIF, chỉnh sửa path bên trong SVG, crop ảnh chèn, lật, opacity, kéo file từ Explorer, paste ảnh hoặc quản lý layer mới. Blur tiếp tục chỉ tác động screenshot nền như hiện tại; ảnh chèn nằm trên lớp blur.
+
+### Thiết kế tích hợp
+
+- API dự kiến importImage(sessionId): Promise<Result<ImportedImage | null>>; null là hủy. Main tự mở dialog với parent editor, chỉ đọc file được chọn; renderer không truyền đường dẫn tùy ý. Validate sender/session trước và sau await, chặn request đồng thời và giải phóng lock bằng finally.
+- PNG/JPG/JPEG/WebP kiểm tra byte signature, byte length, kích thước header trước decode và kết quả decode; SVG kiểm tra XML/root SVG và kích thước viewport/viewBox theo quy tắc bên dưới; xử lý EXIF orientation JPEG nhất quán, không dựa riêng phần mở rộng. Giới hạn đề xuất: 20 MiB/file, 24 megapixel và 16384 px mỗi cạnh; ngân sách tổng ảnh đã decode 128 MiB/phiên tính width × height × 4 (không phải trần RAM tổng, còn có buffer trung gian). Chốt/điều chỉnh bằng đo bộ nhớ trong Task 34/35.
+- Annotation image: id, type, assetId, position, width, height, rotation. Asset cache giữ nguồn/bitmap và natural dimensions trong RAM theo phiên; Zustand chỉ giữ dữ liệu đối tượng, không clone bitmap theo lần resize. Chỉ add sau decode thành công và kiểm tra phiên vẫn hiện hành; lỗi không để lại đối tượng rỗng.
+- Cache cung cấp nguồn đồng bộ cho paint/drawImage và export, báo lỗi nếu asset thiếu; không xuất im lặng thiếu ảnh. Delete/reset/unmount giải phóng asset không còn tham chiếu và object URL nếu có. Không log/upload bytes, ghi capture/ảnh chèn ra file tạm hoặc sửa file nguồn.
+- Image có bounds riêng không cộng stroke; inverse rotation cho hit-test. Dirty region bao trùm world bounds cũ/mới khi move/resize/rotate/delete/cancel. Paint save/restore và drawImage giữ alpha, preview/export cùng resolver.
+- Dùng Zustand selectors và shadcn component hiện có cho UI; không thêm generic filesystem API hoặc nới CSP cho file://. Các type guard drawing/glyph phải được rà soát khi mở rộng union.
+
+### Thứ tự thực hiện và kiểm chứng
+
+34 (import IPC và giới hạn đầu vào) → 35 (đối tượng, asset và render) → 36 (button nối luồng chọn/chèn) → 37 (move/resize/rotate) → 38 (nhập W/H) → 39 (E2E và nghiệm thu). Checklist chi tiết và checkpoint nằm trong todo.md.
+
+Rủi ro chính: bitmap lớn tăng RAM; decode bất đồng bộ trả về phiên cũ; resize ảnh bị nhầm glyph; sai neo khi xoay; preview/export khác nhau; native dialog làm mất focus. Kiểm tra bằng unit geometry/validation/lifecycle và Electron E2E với ảnh fixture, cộng manual dialog Windows. Kết luận hiện là đánh giá code/API, không phải kết quả chạy thử tính năng. Đây là kết luận của bước lập kế hoạch ban đầu; kết quả triển khai và kiểm chứng nằm ở phần dưới.
+
+### Cập nhật định dạng theo yêu cầu: PNG, JPG, JPEG, SVG, WebP
+
+- File filter nhận png, jpg, jpeg, svg, webp, không phân biệt hoa/thường; JPG và JPEG dùng cùng decoder/MIME image/jpeg. Cả năm đuôi file có cùng thao tác select/move/resize/W/H/rotate/delete và Copy/Save PNG.
+- Decode raster bằng khả năng image của Chromium trong renderer sandbox sau validation đầu vào; không giả định nativeImage hỗ trợ mọi định dạng. WebP lossy/lossless và alpha đều thuộc phạm vi. Với WebP động, lấy frame đầu tiên thành bitmap tĩnh trước khi add; kiểm chứng decoder frame-index trên Electron hiện tại trong Task 34. APNG cũng dùng frame đầu, tránh preview thay đổi theo thời gian trong khi export cố định. Nếu decoder thất bại, báo lỗi rõ ràng, không silently bỏ ảnh.
+- SVG được dùng như một ảnh vector tĩnh, không chèn markup vào DOM ứng dụng, iframe hoặc object. Parse XML đúng cách, không dùng regex làm bộ kiểm tra SVG; không xử lý DTD/entity, script, event handler, foreignObject hoặc animation. Từ chối file có các nội dung này với thông báo cụ thể. Chỉ chấp nhận tham chiếu fragment nội bộ cho gradient/clip/mask/use; tài nguyên ngoài, CSS import, font từ URL và image nhúng ngoài phạm vi V1 bị từ chối trước khi render. Không tải network/local file từ nội dung SVG.
+- SVG kích thước tuyệt đối hợp lệ được quy đổi sang CSS px; nếu chỉ có viewBox thì dùng width/height của viewBox làm kích thước logic. Với kích thước phần trăm/thiếu kích thước, dùng viewBox hữu hạn và dương; không có viewport xác định thì báo lỗi. Giữ đúng viewBox origin và preserveAspectRatio. Font ngoài không được tải; logo cần font đặc biệt nên chuyển text thành path để giữ hình thức.
+- Giữ nguồn SVG đã kiểm tra trong RAM để render lại theo kích thước đích, không đóng băng thành bitmap nhỏ lúc import. Trong drag có thể dùng cache; khi commit và trước export phải sẵn sàng raster ở độ phân giải cần thiết, có tính góc/scale và giới hạn bộ nhớ. Preview/export dùng chung nguồn và quy tắc raster; export vẫn flatten PNG, không xuất SVG hay chỉnh path. Nếu kích thước raster vượt ngân sách, từ chối thay đổi với thông báo thay vì xuất ảnh thiếu hoặc giảm chất lượng âm thầm.
+- Giới hạn byte/pixel/cạnh và ngân sách cache ở trên vẫn áp dụng; SVG bổ sung giới hạn độ phức tạp và thời gian decode, chốt bằng spike với SVG có filter/path/use phức tạp trước tích hợp. Raster cache SVG cũ phải được giải phóng khi thay size; không raster mới trên mỗi pointermove. Chưa khẳng định hỗ trợ mọi SVG tùy ý: nghiệm thu tập con SVG tĩnh, độc lập tài nguyên nêu trên.
+- Bổ sung fixture: .jpg và .jpeg riêng, WebP lossy/lossless/alpha/animated first-frame, APNG first-frame, SVG viewBox-only/gradient/clip/mask/use nội bộ/alpha; SVG lỗi/DTD/script/link ngoài/animation phải bị từ chối. Kiểm tra SVG phóng lớn rồi xoay, cache cập nhật và pixel preview/export; xác minh không phát sinh request tài nguyên ngoài.
+- Nguồn đối chiếu: [SVG as an image](https://developer.mozilla.org/en-US/docs/Web/SVG/Guides/SVG_as_an_image) mô tả hạn chế trong image context; [Image formats](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types) mô tả JPEG, PNG, SVG và WebP. Các quy tắc từ chối và cache trên là thiết kế của app; cần kiểm chứng bằng fixture khi triển khai.
+### Kết quả triển khai (2026-09-10)
+
+Task 34–38 đã có code; Task 39 hoàn tất kiểm thử tự động và review ảnh UI tổng hợp, còn manual. Build/typecheck và 95 unit tests đạt. Toàn bộ 14 test E2E cũ đạt qua full run và focused rerun sau cập nhật whitelist API; test chèn ảnh mới đạt, gồm năm đuôi file, WebP/APNG khung đầu, EXIF JPEG, resize sau xoay, W/H, Copy pixel equality, Save integration, cancel và giải phóng asset. Evidence và giới hạn: docs/windows-qa.md.
+
+Điều chỉnh thiết kế theo kiểm chứng: JPEG dùng HTML image decoder để áp EXIF; PNG/WebP dùng ImageDecoder frame 0. Preview/export dùng chung composition canvas để giữ pixel nhất quán. SVG raster cache theo size, cập nhật trong lịch render requestAnimationFrame, không decode XML lại trên mỗi thao tác. Tập con SVG hỗ trợ được liệt kê trong README; filter, stylesheet và embedded image bị từ chối. Ngân sách ảnh 128 MiB không bao gồm toàn bộ RAM app. Native Open/Save chooser và DPI khác 100% chưa được nghiệm thu thủ công; chưa tạo installer mới.

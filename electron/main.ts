@@ -11,6 +11,7 @@ import { loadSettings, persistSettings } from './settings';
 import { replaceShortcuts } from './shortcuts';
 import { CaptureSession } from './session';
 import { decodePng } from './image-output';
+import { readImportedImage } from './image-import';
 
 const root = join(__dirname, '../..');
 const dev = !app.isPackaged && /^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(process.env.SCREENSHOT_DEV_URL ?? '') ? process.env.SCREENSHOT_DEV_URL : undefined;
@@ -27,6 +28,7 @@ let configPath: string;
 let registered: Shortcuts | null = null;
 let outputBusy = false;
 let configBusy = false;
+let importBusy = false;
 const active = new CaptureSession();
 
 function createWindow(view: string, overlay = false) {
@@ -131,6 +133,18 @@ else {
     });
     handle('capture', 'settings', (request: unknown) => { if (!validateCaptureRequest(request)) throw new Error('Invalid capture request.'); return beginCapture(request); });
     handle('current', 'capture', () => data);
+    handle('import-image', 'capture', async (id: string) => {
+      assertSession(id);
+      if (importBusy || outputBusy || data!.mode !== 'full') throw new Error('Please wait for the current operation.');
+      importBusy = true;
+      try {
+        const result = await dialog.showOpenDialog(captureWindow!, { title: 'Insert image', defaultPath: app.getPath('pictures'), properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }] });
+        assertSession(id);
+        if (result.canceled || !result.filePaths.length) return null;
+        const imported = await readImportedImage(result.filePaths[0]);
+        assertSession(id); return imported;
+      } finally { importBusy = false; }
+    });
     handle('cancel', 'capture', (id: string) => { assertSession(id); if (outputBusy) throw new Error('Please wait for export.'); clearCapture(); });
     handle('crop', 'capture', (id: string, rect: unknown) => {
       assertSession(id);
@@ -139,7 +153,7 @@ else {
     });
     handle('output', 'capture', async (id: string, action: string, png: unknown) => {
       assertSession(id);
-      if (outputBusy || configBusy || data!.mode !== 'full' || !['copy', 'save'].includes(action)) throw new Error('Export is not available.');
+      if (outputBusy || importBusy || configBusy || data!.mode !== 'full' || !['copy', 'save'].includes(action)) throw new Error('Export is not available.');
       outputBusy = true;
       try {
         const bytes = decodePng(png, data!.width, data!.height);

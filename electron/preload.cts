@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ScreenshotAPI } from '../shared/contracts';
 const api: ScreenshotAPI = {
+  importImage: id => ipcRenderer.invoke('import-image', id),
   settings: () => ipcRenderer.invoke('settings'),
   updateShortcuts: value => ipcRenderer.invoke('shortcuts', value),
   displays: () => ipcRenderer.invoke('displays'),

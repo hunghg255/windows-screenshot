@@ -47,7 +47,8 @@ async function capture(app: ElectronApplication, settings: Page, mode: 'Full scr
 test('real desktop capture, annotations, clipboard, save integration and clean cancellation', async () => {
   const { app, settings, userData } = await launch();
   try {
-    expect(await settings.evaluate(() => Object.keys(window.screenshot).sort())).toEqual(['cancel', 'capture', 'crop', 'current', 'displays', 'onDisplaysChanged', 'output', 'settings', 'updateShortcuts'].sort());
+    expect(await settings.evaluate(() => Object.keys(window.screenshot).sort())).toEqual(['cancel', 'capture', 'crop', 'current', 'displays', 'importImage', 'onDisplaysChanged', 'output', 'settings', 'updateShortcuts'].sort());
+    expect(await settings.evaluate(() => window.screenshot.importImage('invalid'))).toEqual({ ok: false, error: 'Unauthorized request.' });
     expect(await settings.evaluate(() => typeof (window as unknown as { require?: unknown }).require)).toBe('undefined');
     const editor = await capture(app, settings, 'Full screen');
     await expect(editor.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();

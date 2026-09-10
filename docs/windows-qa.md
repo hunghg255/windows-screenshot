@@ -186,3 +186,17 @@ Artifacts:
 - Built with `pnpm.cmd exec electron-builder --win nsis --x64 --publish never --config.directories.output=release/windows-x64-rotation`. No commit, tag, version bump or publication.
 
 Remaining manual acceptance: Windows 11; physical DPI 125/150/200%, mixed DPI and 4K; native OS IME entry; native Save dialog (folder/overwrite/cancel/errors), Paint paste; real external pointer interruptions and exhaustive edge/zoom cases; interactive installer install/uninstall. Save integration substitutes the native chooser. Programmatic Unicode/cancellation checks and synthetic fixtures do not establish those manual results. Historical manual items stay open.
+
+## Image insertion — 2026-09-10
+
+Implemented Insert image for PNG/JPG/JPEG/SVG/WebP, selection, move, eight-handle resize, 360-degree rotation, W/H and aspect lock, delete, Copy/Save. Imports use a session-validated native chooser bridge; Settings cannot invoke the operation. File byte/header checks precede decoding; SVG is parsed and restricted in the sandbox before image loading.
+
+Validation evidence:
+
+- Typecheck/build and 95 unit tests passed. New cases cover raster headers/limits, JPEG extension aliases, image geometry, rotated resize anchors, hit testing and numeric sizing.
+- Full desktop regression: 14/15 initially passed. The failure was the existing exact preload-key assertion needing the newly added importImage API. After updating that assertion and adding rejection from Settings, all four screenshot tests passed in the focused rerun. The other ten pre-existing tests passed in the full run, including native hotkeys, two displays at 100%, text/emoji, transformations, region/fallback and 30 capture cycles.
+- The image insertion Electron test passed after fixing EXIF decoding. It covers all five extensions through main/preload/file read, W/H, rotated resize, cancel, delete, clipboard pixel equality, Save integration, rejected SVG contents, asset release and stale decode. Generated two-frame WebP/APNG fixtures verify stable first-frame import; an EXIF orientation-6 JPEG verifies swapped dimensions. Native open/save choosers are substituted in this automated test.
+- A preview/Copy pixel mismatch was resolved by using one authoritative composition canvas for preview and export. SVG raster caches follow target size and are shared by both paths. Existing synthetic 4K render/readback p95 measured 9.10 ms, below the 33 ms gate; this is not a physical 4K capture-latency measurement.
+- Visual QA uses a synthetic canvas background only. The first review exposed width containment collapsing the W/H group; an explicit non-shrinking width fixes overlap. The final image test also checks that dimensions and drawing controls do not overlap.
+
+Remaining manual acceptance: native Open/Save dialog interaction (including Escape/focus), physical DPI 125/150/200% and 4K, complex real-world SVG compatibility, repeated large-image memory stress and manual installer verification. SVG filter/stylesheet/embedded-resource support is intentionally outside the supported subset. No installer, version bump, commit or publication was produced for this change.

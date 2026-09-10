@@ -1,6 +1,7 @@
 import type { Point } from '../../shared/contracts';
 import { arrowHead, type Annotation, type GlyphAnnotation, type Transform } from './model';
 import { measureGlyph } from './glyph-layout';
+import { validateImageSize } from '../../shared/image-import';
 export type Box = { x: number; y: number; right: number; bottom: number };
 export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 export type DragHandle = Handle | 'move' | 'rotate';
@@ -10,7 +11,7 @@ export function transformBox(b: Box, t: Transform): Box { return { x: b.x * t.sx
 export function transformPoint(p: Point, t: Transform): Point { return { x: p.x * t.sx + t.x, y: p.y * t.sy + t.y }; }
 export function inversePoint(p: Point, t: Transform): Point { return { x: (p.x - t.x) / t.sx, y: (p.y - t.y) / t.sy }; }
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-export const canRotate = (a: Annotation) => a.type === 'arrow' || a.type === 'rectangle' || a.type === 'text' || a.type === 'emoji';
+export const canRotate = (a: Annotation) => a.type === 'image' || a.type === 'arrow' || a.type === 'rectangle' || a.type === 'text' || a.type === 'emoji';
 export const normalizeAngle = (angle: number) => ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 export const rotationOf = (a: Annotation) => canRotate(a) ? a.rotation ?? 0 : 0;
 export const boxCenter = (b: Box): Point => ({ x: (b.x + b.right) / 2, y: (b.y + b.bottom) / 2 });
@@ -28,6 +29,7 @@ const paddedBox = (b: Box, padding: number): Box => ({ x: b.x - padding, y: b.y 
 
 // Unrotated ink bounds: scale is already applied, UI padding is excluded.
 export function frameBounds(a: Annotation): Box {
+  if (a.type === 'image') return { x: a.position.x, y: a.position.y, right: a.position.x + a.width, bottom: a.position.y + a.height };
   if (a.type === 'text' || a.type === 'emoji') {
     const b = measureGlyph(a).bounds;
     return { x: b.x + 2, y: b.y + 2, right: Math.max(b.right - 2, b.x + 4), bottom: b.bottom - 2 };
@@ -84,13 +86,15 @@ export function resizedBox(b: Box, handle: Handle, delta: Point, uniform: boolea
   return { x: ax + (b.x - ax) * sx, right: ax + (b.right - ax) * sx, y: ay + (b.y - ay) * sy, bottom: ay + (b.bottom - ay) * sy };
 }
 function resizeLocal(a: Annotation, b: Box, handle: Handle, delta: Point, aspect: boolean): Annotation {
-  const glyph = 'position' in a, uniform = glyph || (aspect && handle.length === 2);
+  const glyph = a.type === 'text' || a.type === 'emoji', uniform = glyph || (aspect && handle.length === 2);
   const next = a.type === 'rectangle'
     ? paddedBox(resizedBox(paddedBox(b, -a.width / 2), handle, delta, uniform), a.width / 2)
     : resizedBox(b, handle, delta, uniform);
   let sx = (next.right - next.x) / (b.right - b.x), sy = (next.bottom - next.y) / (b.bottom - b.y);
   let updated: Annotation;
-  if (glyph) {
+  if (a.type === 'image') {
+    updated = { ...a, width: a.width * sx, height: a.height * sy };
+  } else if (glyph) {
     updated = a.type === 'text' ? { ...a, fontSize: clamp(a.fontSize * sx, 12, 160) } : { ...a, size: clamp(a.size * sx, 16, 256) };
   } else {
     const t = a.transform ?? identity;
@@ -120,6 +124,7 @@ export function resizeAnnotation(a: Annotation, _bounds: Box, handle: Handle, de
     if (insideY) { if (handle.includes('n')) localDelta.y = Math.max(-world.y, localDelta.y); if (handle.includes('s')) localDelta.y = Math.min(image.height - world.bottom, localDelta.y); }
   }
   const fits = (candidate: Annotation) => {
+    if (candidate.type === 'image') { try { validateImageSize(candidate.width, candidate.height); } catch { return false; } }
     const bounds = annotationBounds(candidate, 0);
     return (!insideX || (bounds.x >= -1e-7 && bounds.right <= image.width + 1e-7)) && (!insideY || (bounds.y >= -1e-7 && bounds.bottom <= image.height + 1e-7));
   };

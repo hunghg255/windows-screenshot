@@ -77,3 +77,11 @@ Annotations remain in original image pixels regardless of zoom. Blur uses a cach
 Only shortcut settings and the last successful save directory are stored in the Electron userData folder. Capture images are not logged, uploaded, or written to temporary files. Dev/test tooling may explicitly produce screenshots as QA artifacts. The IPC bridge has no generic filesystem, command execution, or arbitrary event-channel API.
 
 See [Windows QA](docs/windows-qa.md) for validation evidence and outstanding hardware checks. E2E tests require an unlocked interactive Windows desktop and write a test image to the clipboard. The Save integration test substitutes only the native file chooser; native dialog interaction still needs manual QA.
+
+## Insert image
+
+Use **Insert image** on the editor toolbar to choose a local PNG, JPG/JPEG, SVG or WebP. The image becomes a separate selectable object above the screenshot. Drag it to move, use its eight handles to resize, or use the rotation handle for 360-degree rotation (Shift snaps to 15 degrees). Shift plus a corner resize preserves the current aspect ratio. W/H accept original-image pixel dimensions; their aspect-ratio lock starts enabled. Delete removes the selected image. Copy and Save include inserted images and keep transparent pixels.
+
+WebP/APNG animation is imported as its first frame. JPEG EXIF orientation is applied. SVG support covers static, self-contained shapes, paths, text, gradients, clip paths, masks and internal use references. Scripts, animation, stylesheets, filters, foreignObject, embedded images and external resources are rejected; export text to paths when a particular font must be preserved. SVG is an image object, not an editable path collection. Save still produces a flattened PNG.
+
+Imports are limited to 20 MiB per file, 24 megapixels and 16384 pixels per edge, with a 128 MiB decoded-image/cache budget. SVG additionally has XML size, element, depth and reference-expansion limits. Images and caches remain in memory and are released on delete or session close. Blur continues to affect the original screenshot, not inserted image layers.

@@ -6,6 +6,8 @@ import { useEditor } from '../stores/editor';
 import { nonEmpty, shapeEnd, type Annotation, type Drawing, type TextAnnotation, type Tool } from './model';
 import { hitTest } from './hit-test';
 import { annotationBounds, Renderer } from './render';
+import { ImageAssets } from './image-assets';
+import { setImageSize } from './image-size';
 import { Toolbar } from './Toolbar';
 import { TextComposer } from './TextComposer';
 import { EmojiPicker } from './EmojiPicker';
@@ -15,6 +17,7 @@ import { SelectionHandles } from './SelectionHandles';
 import { boxCenter, canRotate, frameBounds, moveAnnotation, preserveGlyphOrigin, resizeAnnotation, rotationFromPointer, rotationOf, type DragHandle, type Box } from './transform';
 export function Editor({ capture }: { capture: CaptureData }) {
   const canvas = useRef<HTMLCanvasElement>(null), area = useRef<HTMLDivElement>(null), renderer = useRef<Renderer | null>(null), draft = useRef<Drawing | null>(null);
+  const assets = useRef(new ImageAssets()), importing = useRef(false), sessionId = useRef<string | null>(capture.id);
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [revision, setRevision] = useState(0);
   const s = useEditor(useShallow(state => ({ annotations: state.annotations, selectedId: state.selectedId, tool: state.tool, color: state.color, width: state.width, blurWidth: state.blurWidth, textSize: state.textSize, emojiSize: state.emojiSize, setTool: state.setTool, select: state.select, add: state.add, replace: state.replace })));
   const [editing, setEditing] = useState<TextAnnotation | null>(null);
@@ -24,7 +27,10 @@ export function Editor({ capture }: { capture: CaptureData }) {
   const selected = drag.current?.preview ?? s.annotations.find(a => a.id === s.selectedId);
   function endDrag(commit: boolean) {
     const current = drag.current; if (!current) return; drag.current = null;
-    if (commit && current.moved) useEditor.getState().replace(current.preview);
+    if (commit && current.moved) {
+      try { if (current.preview.type === 'image') assets.current.get(current.preview.assetId, current.preview.width, current.preview.height); useEditor.getState().replace(current.preview); }
+      catch (error) { setMessage(error instanceof Error ? error.message : 'Could not resize image.'); }
+    }
     if (canvas.current?.hasPointerCapture(current.pointerId)) canvas.current.releasePointerCapture(current.pointerId);
     setRevision(v => v + 1);
   }
@@ -51,27 +57,29 @@ export function Editor({ capture }: { capture: CaptureData }) {
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', abort); window.removeEventListener('lostpointercapture', abort); window.removeEventListener('blur', abort); };
   }, [capture.width, capture.height]);
   useEffect(() => {
-    useEditor.getState().reset(); let disposed = false; const img = new Image();
-    img.onload = () => { void loadGlyphFonts().then(() => { if (!disposed) { renderer.current = new Renderer(img); setEmojiOptions(availableEmojis()); setReady(true); } }).catch(() => { if (!disposed) setMessage('Could not load annotation fonts. Please reopen this capture.'); }); };
+    sessionId.current = capture.id; setReady(false); useEditor.getState().reset(); let disposed = false; const img = new Image();
+    img.onload = () => { void loadGlyphFonts().then(() => { if (!disposed) { renderer.current = new Renderer(img, assets.current.get); setEmojiOptions(availableEmojis()); setReady(true); } }).catch(() => { if (!disposed) setMessage('Could not load annotation fonts. Please reopen this capture.'); }); };
     img.onerror = () => setMessage('Could not open the captured image.'); img.src = capture.image;
-    return () => { disposed = true; renderer.current?.dispose(); renderer.current = null; useEditor.getState().reset(); };
+    return () => { disposed = true; sessionId.current = null; assets.current.dispose(); renderer.current?.dispose(); renderer.current = null; useEditor.getState().reset(); };
   }, [capture.id, capture.image]);
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => { endDrag(false); const scale = Math.min(1, (entry.contentRect.width - 56) / capture.width, (entry.contentRect.height - 88) / capture.height); if (canvas.current) { canvas.current.style.width = `${Math.max(1, capture.width * scale)}px`; canvas.current.style.height = `${Math.max(1, capture.height * scale)}px`; } });
     observer.observe(area.current!); return () => observer.disconnect();
   }, [capture.width, capture.height]);
+  useEffect(() => { assets.current.retain(s.annotations); }, [s.annotations]);
   useEffect(() => {
     if (!ready || !canvas.current) return;
     const frame = requestAnimationFrame(() => {
       let all = draft.current ? [...s.annotations, draft.current] : s.annotations;
       if (drag.current) { const preview = drag.current.preview; all = all.map(a => a.id === preview.id ? preview : a); }
       if (editing) all = [...all.filter(a => a.id !== editing.id), ...(textError(editing.content) ? [] : [editing])];
-      renderer.current?.render(canvas.current!, all);
+      try { renderer.current?.render(canvas.current!, all); }
+      catch (error) { setMessage(error instanceof Error ? error.message : 'Could not render image.'); }
     }); return () => cancelAnimationFrame(frame);
   }, [s.annotations, s.selectedId, ready, revision, editing, capture.width]);
   async function cancel() { const r = await window.screenshot.cancel(capture.id); if (!r.ok) setMessage(r.error); }
   useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (drag.current) { if (e.key === 'Escape') { e.preventDefault(); endDrag(false); } return; } if (busy || e.isComposing) return; if (e.key === 'Escape') { if (editing) setEditing(null); else if (picker || pendingEmoji) { setPicker(false); setPendingEmoji(null); s.setTool('select'); } else if (draft.current) { draft.current = null; setRevision(v => v + 1); } else void cancel(); }
+    const key = (e: KeyboardEvent) => { if (!editing && e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable=true]')) return; if (drag.current) { if (e.key === 'Escape') { e.preventDefault(); endDrag(false); } return; } if (busy || e.isComposing) return; if (e.key === 'Escape') { if (editing) setEditing(null); else if (picker || pendingEmoji) { setPicker(false); setPendingEmoji(null); s.setTool('select'); } else if (draft.current) { draft.current = null; setRevision(v => v + 1); } else void cancel(); }
       if (editing || picker) return;
       if (e.key === 'Delete' && !(e.target instanceof HTMLElement && (e.target.closest('input,textarea,select,[contenteditable=true]')))) useEditor.getState().remove(); };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
@@ -88,12 +96,36 @@ export function Editor({ capture }: { capture: CaptureData }) {
     if (!draft.current) return; const p = point(e), a = draft.current;
     draft.current = 'points' in a ? { ...a, points: [...a.points, p] } : { ...a, end: shapeEnd(a.start, p, a.type === 'circle' || (a.type === 'rectangle' && e.shiftKey), capture) }; setRevision(v => v + 1);
   }
+  async function insertImage() {
+    if (!ready || busy || importing.current || editing || picker || drag.current || draft.current) return;
+    importing.current = true; setBusy(true); setMessage('Opening image...');
+    const id = capture.id;
+    try {
+      const result = await window.screenshot.importImage(id);
+      if (sessionId.current !== id) return;
+      if (!result.ok) throw new Error(result.error);
+      if (!result.value) { setMessage('Image selection cancelled.'); return; }
+      const asset = await assets.current.add(result.value);
+      if (sessionId.current !== id) return;
+      const scale = Math.min(1, capture.width * .6 / asset.width, capture.height * .6 / asset.height);
+      const width = Math.max(2, asset.width * scale), height = Math.max(2, asset.height * scale), annotationId = crypto.randomUUID();
+      assets.current.get(asset.assetId, width, height);
+      s.add({ id: annotationId, type: 'image', assetId: asset.assetId, width, height, position: { x: (capture.width - width) / 2, y: (capture.height - height) / 2 } });
+      setPendingEmoji(null); s.setTool('select'); s.select(annotationId); setMessage('Image inserted. Drag handles to resize or rotate.');
+    } catch (error) { if (sessionId.current === id) { assets.current.retain(useEditor.getState().annotations); setMessage(error instanceof Error ? error.message : 'Could not insert image.'); } }
+    finally { importing.current = false; if (sessionId.current === id) { setBusy(false); canvas.current?.focus(); } }
+  }
+  function imageSize(axis: 'width' | 'height', value: number, locked: boolean) {
+    if (selected?.type !== 'image' || busy || drag.current) return;
+    try { const next = setImageSize(selected, axis, value, locked, capture); assets.current.get(next.assetId, next.width, next.height); s.replace(next); setMessage(''); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Invalid image size.'); }
+  }
   async function output(action: 'copy' | 'save') {
     if (!renderer.current || busy || editing || picker || drag.current) return; setBusy(true); setMessage('');
     try { const r = await window.screenshot.output(capture.id, action, renderer.current.export(useEditor.getState().annotations)); setMessage(r.ok ? r.value === 'cancelled' ? 'Save cancelled. Your image is still here.' : r.value === 'saved' ? 'PNG saved.' : 'Image copied to clipboard.' : r.error); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Export failed. Please try again.'); } finally { setBusy(false); }
   }
-  return <main className="editor"><Toolbar busy={busy || !!editing || picker || !!drag.current} ready={ready} chooseTool={chooseTool} output={action => void output(action)} cancel={() => void cancel()} /><div ref={area} className="canvas-area"><div className="canvas-stage"><canvas ref={canvas} tabIndex={0} width={capture.width} height={capture.height} aria-label="Screenshot annotation canvas" style={{ cursor: s.tool === 'select' ? 'default' : s.tool === 'text' ? 'text' : 'crosshair' }} onDoubleClick={e => {
+  return <main className="editor"><Toolbar busy={busy || !!editing || picker || !!drag.current} ready={ready} insertImage={() => void insertImage()} imageSize={imageSize} chooseTool={chooseTool} output={action => void output(action)} cancel={() => void cancel()} /><div ref={area} className="canvas-area"><div className="canvas-stage"><canvas ref={canvas} tabIndex={0} width={capture.width} height={capture.height} aria-label="Screenshot annotation canvas" style={{ cursor: s.tool === 'select' ? 'default' : s.tool === 'text' ? 'text' : 'crosshair' }} onDoubleClick={e => {
     if (s.tool !== 'select' || editing || picker || busy) return; const b = e.currentTarget.getBoundingClientRect();
     const id = hitTest(s.annotations, pixelPoint({ x: e.clientX, y: e.clientY }, { x: b.left, y: b.top, width: b.width, height: b.height }, capture), 5 * capture.width / b.width);
     const a = s.annotations.find(a => a.id === id); if (a?.type === 'text') setEditing({ ...a });
