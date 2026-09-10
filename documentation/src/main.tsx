@@ -35,6 +35,8 @@ const screenshots = [
   { title: t("Cài đặt"), src: './screenshots/settings.png', icon: Keyboard, alt: t("Cửa sổ Screenshot thật với lựa chọn màn hình, nút Full screen, Select region và phím tắt."), caption: t("Chọn màn hình cần chụp và đặt phím tắt theo thói quen của bạn.") },
   { title: t("Ghi chú"), src: './screenshots/editor.png', icon: Pencil, alt: t("Trình ghi chú thật với khung chữ nhật, mũi tên và chữ màu cam trên ảnh màn hình cài đặt."), caption: t("Khung chọn, mũi tên và văn bản được vẽ trực tiếp bằng các công cụ của app.") },
   { title: 'Emoji', src: './screenshots/emoji.png', icon: Smile, alt: t("Bảng chọn emoji đang mở trong trình ghi chú Screenshot trên Windows."), caption: t("Chọn emoji ngay trong trình ghi chú để thêm ngữ cảnh cho ảnh.") },
+  { title: t('Chèn ảnh'), src: './screenshots/insert-image.png', icon: Pencil, alt: t('Ảnh được chèn và xoay với khung chọn và ô nhập W/H.'), caption: t('Chèn PNG, JPG/JPEG, SVG hoặc WebP; chỉnh W/H theo pixel và khóa tỷ lệ.') },
+  { title: t('Xoay ảnh chụp'), src: './screenshots/rotate-screenshot.png', icon: Crop, alt: t('Ảnh chụp cùng ghi chú sau khi xoay 90° theo chiều kim đồng hồ.'), caption: t('Xoay toàn bộ ảnh và ghi chú 90° mỗi lần bấm; các đối tượng vẫn chỉnh sửa được.') },
 ];
 
 
@@ -76,6 +78,16 @@ const screenshots = [
       </section>
 
       <div className="benefit-strip wrap"><span><LockKeyhole size={17} /> {t("Xử lý ngay trên máy")}</span><span><Github size={17} /> {t("Mã nguồn mở")}</span><span><Keyboard size={17} /> {t("Phím tắt tùy chỉnh")}</span><span><Copy size={17} /> {t("Copy hoặc lưu PNG")}</span></div>
+
+      <section className="editing wrap" aria-labelledby="editing-title">
+        <div className="section-heading"><div><div className="eyebrow">{t('THÊM KHẢ NĂNG CHỈNH SỬA')}</div><h2 id="editing-title">{t('Chèn ảnh. Chỉnh đúng ý.')}</h2></div></div>
+        <div className="feature-grid">
+          <article className="feature-card capture-card"><div className="card-icon"><Pencil /></div><h3>{t('Chèn ảnh')}</h3><p>{t('Chèn PNG, JPG/JPEG, SVG hoặc WebP; chỉnh W/H theo pixel và khóa tỷ lệ.')}</p><p className="feature-detail">{t('Ảnh chèn là đối tượng riêng: di chuyển, đổi cỡ, xoay hoặc xóa. PNG xuất giữ vùng trong suốt. Ảnh động dùng khung hình đầu; SVG cần tĩnh và tự chứa tài nguyên.')}</p></article>
+          <article className="feature-card annotate-card"><div className="card-icon"><MousePointer2 /></div><h3>{t('Di chuyển, đổi cỡ, xoay tự do.')}</h3><p>{t('Chọn và kéo đối tượng để di chuyển; dùng tám tay nắm để đổi cỡ. Giữ Shift khi kéo góc để giữ tỷ lệ; chữ và emoji luôn giữ tỷ lệ.')}</p><p className="feature-detail">{t('Mũi tên, hình chữ nhật, chữ, emoji và ảnh chèn hỗ trợ xoay 360°. Giữ Shift để chia góc 15°. Nét vẽ giữ độ dày khi đổi cỡ; dùng Size để chỉnh độ dày.')}</p></article>
+          <article className="feature-card privacy-card"><div className="card-icon"><Crop /></div><h3>{t('Xoay ảnh chụp')}</h3><p>{t('Xoay toàn bộ ảnh và ghi chú 90° mỗi lần bấm; các đối tượng vẫn chỉnh sửa được.')}</p><p className="feature-detail">{t('Dùng nút Rotate screenshot trên thanh công cụ. Bốn lần bấm trở về hướng ban đầu. Copy và Save xuất đúng hướng đang xem ở độ phân giải gốc, không kèm khung chọn.')}</p></article>
+        </div>
+        <p className="editing-note">{t('Bút làm mờ chỉ tác động lên ảnh chụp gốc, không làm mờ ảnh chèn. Mỗi tệp nhập tối đa 20 MiB, 24 megapixel và 16.384 pixel mỗi cạnh.')}</p>
+      </section>
 
       <section id="features" className="features wrap">
         <div className="section-heading"><div><div className="eyebrow">{t("ÍT THAO TÁC. NHIỀU Ý NGHĨA.")}</div><h2>{t("Đủ công cụ.")}<br />{t("Đúng lúc bạn cần.")}</h2></div><p>{t("Từ báo lỗi, góp ý thiết kế đến hướng dẫn đồng đội.")}<br />{t("Mọi thứ gói gọn trong một lần chụp.")}</p></div>

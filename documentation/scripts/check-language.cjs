@@ -20,6 +20,15 @@ const { chromium, expect } = require('@playwright/test');
       await expect(page.locator('.app-screenshot')).toHaveAttribute('src', image);
       await expect(page.locator('.download-note')).toContainText(language === 'en' ? 'Free' : 'Miễn phí');
       await expect(page.locator('.app-gallery figcaption')).toContainText(language === 'en' ? 'Annotate' : 'Ghi chú');
+      await expect(page.locator('#editing-title')).toHaveText(language === 'en' ? 'Insert images. Make it yours.' : 'Chèn ảnh. Chỉnh đúng ý.');
+      const galleryButtons = page.locator('.demo-controls button');
+      await expect(galleryButtons).toHaveCount(5);
+      for (let index = 0; index < 5; index++) {
+        await galleryButtons.nth(index).click();
+        await expect(galleryButtons.nth(index)).toHaveAttribute('aria-pressed', 'true');
+        await expect.poll(() => page.locator('.app-screenshot').evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+      }
+      await galleryButtons.nth(1).click();
       for (const width of [320, 375, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         await expect(page.getByRole('combobox')).toBeVisible();

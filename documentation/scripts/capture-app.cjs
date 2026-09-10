@@ -1,13 +1,14 @@
 // Capture real Electron UI with the app's own settings screenshot as safe input.
 // Run from the repository root: node documentation/scripts/capture-app.cjs
 const { _electron: electron, expect } = require('@playwright/test');
-const { mkdtemp, mkdir } = require('node:fs/promises');
+const { mkdtemp, mkdir, readFile } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { resolve, join } = require('node:path');
 
 (async () => {
   const { createServer } = await import('vite');
-  const server = await createServer({ server: { port: 0 } });
+  const taskDir = await mkdtemp(join(tmpdir(), 'screenshot-marketing-'));
+  const server = await createServer({ cacheDir: join(taskDir, 'vite'), server: { port: 0 } });
   await server.listen();
   const env = { ...process.env, SCREENSHOT_DEV_URL: `http://127.0.0.1:${server.httpServer.address().port}`, SCREENSHOT_TEST_USER_DATA: await mkdtemp(join(tmpdir(), 'screenshot-marketing-')) };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -17,7 +18,7 @@ const { resolve, join } = require('node:path');
   try {
     app = await electron.launch({ args: [resolve('.')], env });
     const page = await app.firstWindow();
-    await expect(page.getByLabel('Capture display')).toBeEnabled();
+    await expect(page.getByLabel('Capture display')).toBeEnabled({ timeout: 30000 });
     await expect(page.getByLabel('full shortcut')).not.toHaveValue('');
     await page.evaluate(() => document.fonts.ready);
     const settingsImage = await page.screenshot({ path: join(output, 'settings.png') });
@@ -57,7 +58,31 @@ const { resolve, join } = require('node:path');
     await page.getByLabel('Emoji', { exact: true }).click();
     await expect(page.getByLabel('Emoji picker', { exact: true })).toBeVisible();
     await page.screenshot({ path: join(output, 'emoji.png') });
-    console.log('Saved real app screenshots: settings.png, editor.png, emoji.png');
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Select', { exact: true }).click();
+    // This fixture window is not a production capture session: provide only
+    // repository-owned PNG bytes, then use the real decoding and editing UI.
+    await app.evaluate(({ ipcMain }, bytes) => {
+      ipcMain.removeHandler('import-image');
+      ipcMain.handle('import-image', () => ({ ok: true, value: { mime: 'image/png', bytes: new Uint8Array(bytes) } }));
+    }, [...await readFile(resolve('documentation/public/logo.png'))]);
+    await page.getByRole('button', { name: 'Insert image', exact: true }).click();
+    await expect(page.getByLabel('Image width', { exact: true })).toBeVisible();
+    await page.getByLabel('Image width', { exact: true }).fill('160');
+    await page.keyboard.press('Enter');
+    const selection = await page.getByLabel('Selected object', { exact: true }).boundingBox();
+    const handle = await page.getByLabel('Rotate selected object', { exact: true }).boundingBox();
+    const cx = selection.x + selection.width / 2, cy = selection.y + selection.height / 2;
+    const hx = handle.x + handle.width / 2, hy = handle.y + handle.height / 2;
+    const angle = Math.PI / 12;
+    await page.mouse.move(hx, hy);
+    await page.mouse.down();
+    await page.mouse.move(cx + (hx - cx) * Math.cos(angle) - (hy - cy) * Math.sin(angle), cy + (hx - cx) * Math.sin(angle) + (hy - cy) * Math.cos(angle), { steps: 12 });
+    await page.mouse.up();
+    await page.screenshot({ path: join(output, 'insert-image.png') });
+    await page.getByRole('button', { name: 'Rotate screenshot 90° clockwise', exact: true }).click();
+    await page.screenshot({ path: join(output, 'rotate-screenshot.png') });
+    console.log('Saved real app screenshots: settings.png, editor.png, emoji.png, insert-image.png, rotate-screenshot.png');
   } finally {
     if (app) await app.close();
     await server.close();

@@ -1,6 +1,20 @@
 export type Language = 'vi' | 'en';
 
 export const english = {
+  'Chèn ảnh': 'Insert image',
+  'Xoay ảnh chụp': 'Rotate screenshot',
+  'Ảnh được chèn và xoay với khung chọn và ô nhập W/H.': 'An inserted, rotated image with selection handles and W/H controls.',
+  'Chèn PNG, JPG/JPEG, SVG hoặc WebP; chỉnh W/H theo pixel và khóa tỷ lệ.': 'Insert PNG, JPG/JPEG, SVG, or WebP; set W/H in pixels and lock the aspect ratio.',
+  'Ảnh chụp cùng ghi chú sau khi xoay 90° theo chiều kim đồng hồ.': 'The screenshot and annotations after a 90° clockwise rotation.',
+  'Xoay toàn bộ ảnh và ghi chú 90° mỗi lần bấm; các đối tượng vẫn chỉnh sửa được.': 'Rotate the whole screenshot and annotations by 90° per click; objects stay editable.',
+  'THÊM KHẢ NĂNG CHỈNH SỬA': 'MORE WAYS TO EDIT',
+  'Chèn ảnh. Chỉnh đúng ý.': 'Insert images. Make it yours.',
+  'Ảnh chèn là đối tượng riêng: di chuyển, đổi cỡ, xoay hoặc xóa. PNG xuất giữ vùng trong suốt. Ảnh động dùng khung hình đầu; SVG cần tĩnh và tự chứa tài nguyên.': 'Each inserted image is a separate object you can move, resize, rotate, or delete. PNG output preserves transparency. Animated images use the first frame; SVGs must be static and self-contained.',
+  'Di chuyển, đổi cỡ, xoay tự do.': 'Move, resize, and rotate freely.',
+  'Chọn và kéo đối tượng để di chuyển; dùng tám tay nắm để đổi cỡ. Giữ Shift khi kéo góc để giữ tỷ lệ; chữ và emoji luôn giữ tỷ lệ.': 'Select and drag objects to move them; use eight handles to resize. Hold Shift while dragging a corner to preserve proportions; text and emoji always keep theirs.',
+  'Mũi tên, hình chữ nhật, chữ, emoji và ảnh chèn hỗ trợ xoay 360°. Giữ Shift để chia góc 15°. Nét vẽ giữ độ dày khi đổi cỡ; dùng Size để chỉnh độ dày.': 'Arrows, rectangles, text, emoji, and inserted images support 360° rotation. Hold Shift to snap to 15° steps. Strokes keep their thickness when resized; use Size to adjust it.',
+  'Dùng nút Rotate screenshot trên thanh công cụ. Bốn lần bấm trở về hướng ban đầu. Copy và Save xuất đúng hướng đang xem ở độ phân giải gốc, không kèm khung chọn.': 'Use Rotate screenshot on the toolbar. Four clicks restore the original orientation. Copy and Save export the displayed orientation at original resolution, without selection frames.',
+  'Bút làm mờ chỉ tác động lên ảnh chụp gốc, không làm mờ ảnh chèn. Mỗi tệp nhập tối đa 20 MiB, 24 megapixel và 16.384 pixel mỗi cạnh.': 'The blur pen affects only the original screenshot, not inserted images. Imports are limited to 20 MiB per file, 24 megapixels, and 16,384 pixels per edge.',
   'Chụp màn hình': 'Capture your screen',
   'Chụp': 'Capture',
   'Cả màn hình hay chỉ một vùng nhỏ. Bấm phím tắt, kéo chọn và bắt đầu.': 'Your whole screen or just a small area. Press a shortcut, drag to select, and get started.',

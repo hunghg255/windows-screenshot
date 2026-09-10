@@ -25,4 +25,8 @@ GitHub and download destinations are defined in `src/main.tsx`. Download buttons
 
 ### Refresh the app screenshots
 
-From the repository root, run `pnpm build:electron` then `node documentation/scripts/capture-app.cjs` on Windows. This launches an isolated Electron session and writes three screenshots to `public/screenshots/`. The editor receives a screenshot of the app's settings window through a test-only IPC fixture; annotations are made with the real app controls. No desktop contents or personal conversations are captured. Production application code is unchanged.
+From the repository root, run `pnpm build:electron` then `node documentation/scripts/capture-app.cjs` on Windows. This launches an isolated Electron session with a separate Vite cache and writes five screenshots to `public/screenshots/`: settings, annotations, emoji, inserted image with rotation and W/H controls, and whole-screenshot rotation. The editor receives the app's settings screenshot and repository logo through test-only IPC fixtures; decoding, annotations and transformations use the real app controls. No desktop contents or personal conversations are captured. Production application code is unchanged.
+
+The Vietnamese and English feature descriptions cover local image import (PNG, JPG/JPEG, SVG, WebP), eight-handle resizing, aspect-ratio controls, object rotation, 90° screenshot rotation, stroke thickness and PNG export. Import limits and the blur tool's original-screenshot-only behavior are documented alongside these features.
+
+To verify the landing page, start Vite on port 5174, then run `node documentation/scripts/check-language.cjs` from the repository root. The check covers both languages, metadata, all five gallery images, and layouts at 320, 375, 768 and 1440 pixels using headless Microsoft Edge.

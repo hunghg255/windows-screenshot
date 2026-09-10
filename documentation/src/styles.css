@@ -42,3 +42,8 @@
 
 /* Keep the keyboard shortcut hidden even during full-page capture. */
 .skip-link:not(:focus) { clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; white-space: nowrap; }
+.demo-controls { flex-wrap: wrap; }
+.editing { padding-top: 60px; }
+.editing .feature-card { min-height: 0; }
+.feature-card .feature-detail { margin-top: 16px; }
+.editing-note { color: var(--muted); font-size: 11px; line-height: 1.9; margin: 20px 0 0; }
