@@ -1,6 +1,6 @@
 {
   "name": "windows-screenshot",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Private, local Windows screenshot and annotation tool",
   "author": "Windows Screenshot",
   "license": "MIT",
