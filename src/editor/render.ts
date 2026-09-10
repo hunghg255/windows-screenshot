@@ -1,7 +1,15 @@
 import { arrowHead, type Annotation } from './model';
 import { glyphFont, measureGlyph } from './glyph-layout';
-import { transformBox, type Box } from './transform';
+import { annotationBounds, boxCenter, frameBounds, identity, rotationOf, transformPoint } from './transform';
+export { annotationBounds } from './transform';
 export function paint(ctx: CanvasRenderingContext2D, a: Annotation, override?: string) {
+  const rotation = rotationOf(a);
+  if (rotation) { const center = boxCenter(frameBounds(a)); ctx.save(); ctx.translate(center.x, center.y); ctx.rotate(rotation); ctx.translate(-center.x, -center.y); paint(ctx, { ...a, rotation: 0 }, override); ctx.restore(); return; }
+  if (a.type === 'rectangle') {
+    const start = transformPoint(a.start, a.transform ?? identity), end = transformPoint(a.end, a.transform ?? identity);
+    ctx.strokeStyle = override ?? a.color; ctx.lineWidth = a.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.rect(start.x, start.y, end.x - start.x, end.y - start.y); ctx.stroke(); return;
+  }
   if ('transform' in a && a.transform) { const t = a.transform; ctx.save(); ctx.translate(t.x, t.y); ctx.scale(t.sx, t.sy); paint(ctx, { ...a, transform: undefined }, override); ctx.restore(); return; }
   if (a.type === 'text' || a.type === 'emoji') {
     ctx.font = glyphFont(a); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
@@ -18,23 +26,13 @@ export function paint(ctx: CanvasRenderingContext2D, a: Annotation, override?: s
   } else if (a.type === 'arrow') {
     ctx.moveTo(a.start.x, a.start.y); ctx.lineTo(a.end.x, a.end.y);
     arrowHead(a.start, a.end, a.width).forEach(p => { ctx.moveTo(a.end.x, a.end.y); ctx.lineTo(p.x, p.y); });
-  } else if (a.type === 'rectangle') ctx.rect(a.start.x, a.start.y, a.end.x - a.start.x, a.end.y - a.start.y);
-  else ctx.arc((a.start.x + a.end.x) / 2, (a.start.y + a.end.y) / 2, Math.abs(a.end.x - a.start.x) / 2, 0, Math.PI * 2);
+  } else ctx.arc((a.start.x + a.end.x) / 2, (a.start.y + a.end.y) / 2, Math.abs(a.end.x - a.start.x) / 2, 0, Math.PI * 2);
   ctx.stroke();
 }
 function canvas(width: number, height: number) {
   const c = document.createElement('canvas'); c.width = width; c.height = height;
   // Keep cached surfaces in CPU memory to avoid full 4K GPU readbacks when masking/exporting.
   c.getContext('2d', { willReadFrequently: true }); return c;
-}
-export function annotationBounds(a: Annotation, padding = 2): Box {
-  if ('transform' in a && a.transform) { const b = transformBox(annotationBounds({ ...a, transform: undefined }, 0), a.transform); return { x: b.x - padding, y: b.y - padding, right: b.right + padding, bottom: b.bottom + padding }; }
-  if (a.type === 'text' || a.type === 'emoji') { const b = measureGlyph(a).bounds, delta = padding - 2; return { x: b.x - delta, y: b.y - delta, right: Math.max(b.right - 2, b.x + 4) + padding, bottom: b.bottom + delta }; }
-  const points = 'points' in a ? a.points : a.type === 'arrow' ? [a.start, a.end, ...arrowHead(a.start, a.end, a.width)] : [a.start, a.end];
-  let x = Infinity, y = Infinity, right = -Infinity, bottom = -Infinity;
-  for (const p of points) { x = Math.min(x, p.x); y = Math.min(y, p.y); right = Math.max(right, p.x); bottom = Math.max(bottom, p.y); }
-  const pad = a.width / 2 + padding;
-  return { x: x - pad, y: y - pad, right: right + pad, bottom: bottom + pad };
 }
 export class Renderer {
   private blurred: HTMLCanvasElement;

@@ -1,10 +1,10 @@
 import type { Point } from '../../shared/contracts';
 export type Tool = 'select' | 'arrow' | 'rectangle' | 'circle' | 'freehand' | 'blurStroke' | 'text' | 'emoji';
 export type Transform = { x: number; y: number; sx: number; sy: number };
-type Base = { id: string; width: number; transform?: Transform };
+type Base = { id: string; width: number; transform?: Transform; rotation?: number };
 export type Drawing = (Base & { type: 'arrow' | 'rectangle' | 'circle'; color: string; start: Point; end: Point }) | (Base & { type: 'freehand'; color: string; points: Point[] }) | (Base & { type: 'blurStroke'; points: Point[] });
-export type TextAnnotation = { id: string; type: 'text'; position: Point; content: string; color: string; fontFamily: 'Segoe UI'; fontSize: number; lineHeight: number };
-export type EmojiAnnotation = { id: string; type: 'emoji'; position: Point; content: string; size: number };
+export type TextAnnotation = { id: string; type: 'text'; position: Point; content: string; color: string; fontFamily: 'Segoe UI'; fontSize: number; lineHeight: number; rotation?: number };
+export type EmojiAnnotation = { id: string; type: 'emoji'; position: Point; content: string; size: number; rotation?: number };
 export type GlyphAnnotation = TextAnnotation | EmojiAnnotation;
 export type Annotation = Drawing | GlyphAnnotation;
 export function shapeEnd(start: Point, end: Point, square: boolean, size: { width: number; height: number }): Point {

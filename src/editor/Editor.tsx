@@ -1,5 +1,6 @@
-﻿import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import type { CaptureData } from '../../shared/contracts';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import type { CaptureData, Point } from '../../shared/contracts';
+import { useShallow } from 'zustand/react/shallow';
 import { pixelPoint } from '../../shared/geometry';
 import { useEditor } from '../stores/editor';
 import { nonEmpty, shapeEnd, type Annotation, type Drawing, type TextAnnotation, type Tool } from './model';
@@ -11,15 +12,15 @@ import { EmojiPicker } from './EmojiPicker';
 import { loadGlyphFonts, textError } from './glyph-layout';
 import { availableEmojis } from './emojis';
 import { SelectionHandles } from './SelectionHandles';
-import { moveAnnotation, resizeAnnotation, type Handle, type Box } from './transform';
+import { boxCenter, canRotate, frameBounds, moveAnnotation, preserveGlyphOrigin, resizeAnnotation, rotationFromPointer, rotationOf, type DragHandle, type Box } from './transform';
 export function Editor({ capture }: { capture: CaptureData }) {
   const canvas = useRef<HTMLCanvasElement>(null), area = useRef<HTMLDivElement>(null), renderer = useRef<Renderer | null>(null), draft = useRef<Drawing | null>(null);
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [revision, setRevision] = useState(0);
-  const s = useEditor();
+  const s = useEditor(useShallow(state => ({ annotations: state.annotations, selectedId: state.selectedId, tool: state.tool, color: state.color, width: state.width, blurWidth: state.blurWidth, textSize: state.textSize, emojiSize: state.emojiSize, setTool: state.setTool, select: state.select, add: state.add, replace: state.replace })));
   const [editing, setEditing] = useState<TextAnnotation | null>(null);
   const [picker, setPicker] = useState(false), [pendingEmoji, setPendingEmoji] = useState<string | null>(null);
   const [emojiOptions, setEmojiOptions] = useState<ReturnType<typeof availableEmojis>>([]);
-  const drag = useRef<{ original: Annotation; preview: Annotation; bounds: Box; handle: Handle | 'move'; clientX: number; clientY: number; ratio: number; pointerId: number; moved: boolean } | null>(null);
+  const drag = useRef<{ original: Annotation; preview: Annotation; bounds: Box; handle: DragHandle; center: Point; start: Point; clientX: number; clientY: number; ratio: number; pointerId: number; moved: boolean } | null>(null);
   const selected = drag.current?.preview ?? s.annotations.find(a => a.id === s.selectedId);
   function endDrag(commit: boolean) {
     const current = drag.current; if (!current) return; drag.current = null;
@@ -27,10 +28,11 @@ export function Editor({ capture }: { capture: CaptureData }) {
     if (canvas.current?.hasPointerCapture(current.pointerId)) canvas.current.releasePointerCapture(current.pointerId);
     setRevision(v => v + 1);
   }
-  function beginDrag(e: PointerEvent<HTMLElement>, handle: Handle | 'move', annotation = selected) {
+  function beginDrag(e: PointerEvent<HTMLElement>, handle: DragHandle, annotation = selected) {
     if (!annotation || busy || editing || picker || e.button !== 0 || drag.current) return;
     e.preventDefault(); canvas.current?.focus();
-    drag.current = { original: annotation, preview: annotation, bounds: annotationBounds(annotation, 0), handle, clientX: e.clientX, clientY: e.clientY, ratio: capture.width / canvas.current!.getBoundingClientRect().width, pointerId: e.pointerId, moved: false };
+    const rect = canvas.current!.getBoundingClientRect(), ratio = capture.width / rect.width;
+    drag.current = { original: annotation, preview: annotation, bounds: annotationBounds(annotation, 0), handle, center: boxCenter(frameBounds(annotation)), start: { x: (e.clientX - rect.left) * ratio, y: (e.clientY - rect.top) * ratio }, clientX: e.clientX, clientY: e.clientY, ratio, pointerId: e.pointerId, moved: false };
     canvas.current!.setPointerCapture(e.pointerId); setRevision(v => v + 1);
   }
   useEffect(() => {
@@ -38,7 +40,9 @@ export function Editor({ capture }: { capture: CaptureData }) {
       const d = drag.current; if (!d || e.pointerId !== d.pointerId) return;
       if (!d.moved && Math.hypot(e.clientX - d.clientX, e.clientY - d.clientY) < 3) return;
       d.moved = true; const delta = { x: (e.clientX - d.clientX) * d.ratio, y: (e.clientY - d.clientY) * d.ratio };
-      d.preview = d.handle === 'move' ? moveAnnotation(d.original, d.bounds, delta, capture) : resizeAnnotation(d.original, d.bounds, d.handle, delta, e.shiftKey, capture);
+      d.preview = d.handle === 'rotate'
+        ? { ...d.original, rotation: rotationFromPointer(rotationOf(d.original), d.center, d.start, { x: d.start.x + delta.x, y: d.start.y + delta.y }, e.shiftKey, rotationOf(d.preview)) }
+        : d.handle === 'move' ? moveAnnotation(d.original, d.bounds, delta, capture) : resizeAnnotation(d.original, d.bounds, d.handle, delta, e.shiftKey, capture);
       setRevision(v => v + 1);
     };
     const up = (e: globalThis.PointerEvent) => { if (drag.current?.pointerId === e.pointerId) { move(e); endDrag(true); } };
@@ -53,7 +57,7 @@ export function Editor({ capture }: { capture: CaptureData }) {
     return () => { disposed = true; renderer.current?.dispose(); renderer.current = null; useEditor.getState().reset(); };
   }, [capture.id, capture.image]);
   useEffect(() => {
-    const observer = new ResizeObserver(([entry]) => { endDrag(false); const scale = Math.min(1, (entry.contentRect.width - 56) / capture.width, (entry.contentRect.height - 56) / capture.height); if (canvas.current) { canvas.current.style.width = `${Math.max(1, capture.width * scale)}px`; canvas.current.style.height = `${Math.max(1, capture.height * scale)}px`; } });
+    const observer = new ResizeObserver(([entry]) => { endDrag(false); const scale = Math.min(1, (entry.contentRect.width - 56) / capture.width, (entry.contentRect.height - 88) / capture.height); if (canvas.current) { canvas.current.style.width = `${Math.max(1, capture.width * scale)}px`; canvas.current.style.height = `${Math.max(1, capture.height * scale)}px`; } });
     observer.observe(area.current!); return () => observer.disconnect();
   }, [capture.width, capture.height]);
   useEffect(() => {
@@ -101,7 +105,7 @@ export function Editor({ capture }: { capture: CaptureData }) {
     e.currentTarget.setPointerCapture(e.pointerId);
     s.select(null); const base = { id: crypto.randomUUID(), width: s.tool === 'blurStroke' ? s.blurWidth : s.width };
     draft.current = s.tool === 'blurStroke' ? { ...base, type: 'blurStroke', points: [p] } : s.tool === 'freehand' ? { ...base, type: 'freehand', color: s.color, points: [p] } : { ...base, type: s.tool, color: s.color, start: p, end: p }; setRevision(v => v + 1);
-  }} onPointerMove={e => { if (!busy && !drag.current) update(e); }} onPointerUp={e => { if (drag.current) return; update(e); if (draft.current && nonEmpty(draft.current)) s.add(draft.current); draft.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); setRevision(v => v + 1); }} onPointerCancel={() => { draft.current = null; setRevision(v => v + 1); }} />{selected && !editing && !picker && <SelectionHandles bounds={annotationBounds(selected, 0)} width={capture.width} height={capture.height} start={beginDrag} edit={() => { if (!drag.current && selected.type === 'text') setEditing({ ...selected }); }} />}</div></div>{editing && <TextComposer value={editing} change={setEditing} done={finishText} cancel={() => { setEditing(null); requestAnimationFrame(() => canvas.current?.focus()); }} />}{picker && <EmojiPicker options={emojiOptions} choose={emoji => { setPendingEmoji(emoji); setPicker(false); canvas.current?.focus(); }} cancel={closePanel} />}<footer><span>{capture.width} × {capture.height} px · Original resolution</span><span role="status">{pendingEmoji ? 'Click the image to place the emoji · Esc to discard' : message || 'Shift: square · Double-click text: edit · Delete: remove · Esc: cancel'}</span></footer></main>;
+  }} onPointerMove={e => { if (!busy && !drag.current) update(e); }} onPointerUp={e => { if (drag.current) return; update(e); if (draft.current && nonEmpty(draft.current)) s.add(draft.current); draft.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); setRevision(v => v + 1); }} onPointerCancel={() => { draft.current = null; setRevision(v => v + 1); }} />{selected && !editing && !picker && <SelectionHandles bounds={frameBounds(selected)} rotation={rotationOf(selected)} rotatable={canRotate(selected)} width={capture.width} height={capture.height} start={beginDrag} edit={() => { if (!drag.current && selected.type === 'text') setEditing({ ...selected }); }} />}</div></div>{editing && <TextComposer value={editing} change={next => setEditing(previous => previous ? preserveGlyphOrigin(previous, next) : next)} done={finishText} cancel={() => { setEditing(null); requestAnimationFrame(() => canvas.current?.focus()); }} />}{picker && <EmojiPicker options={emojiOptions} choose={emoji => { setPendingEmoji(emoji); setPicker(false); canvas.current?.focus(); }} cancel={closePanel} />}<footer><span>{capture.width} × {capture.height} px · Original resolution</span><span role="status">{pendingEmoji ? 'Click the image to place the emoji · Esc to discard' : message || 'Drag rotation handle: rotate · Shift: square / snap 15° · Double-click text: edit · Delete: remove · Esc: cancel'}</span></footer></main>;
 }
 
 

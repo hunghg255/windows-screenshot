@@ -1,4 +1,4 @@
-﻿# Task list: Windows Screenshot
+# Task list: Windows Screenshot
 
 Xem [kế hoạch](task.md). Trạng thái: baseline đã triển khai; checkbox nghiệm thu lịch sử giữ nguyên. Phần bổ sung Task 16–22 chưa triển khai.
 
@@ -714,3 +714,123 @@ Status: needs review. Task 23–27 đã triển khai code và regression tự đ
 
 Thứ tự: 23 → 24 → 25 → 26 → 27. Các task mới đã triển khai trong 0.3.0. Không đánh dấu nghiệm thu thủ công/phần cứng chưa thử là done.
 
+
+## Giai đoạn bổ sung: Xoay 360° và viền rectangle đều (2026-09-10)
+
+**Status: needs review.** Task 28–33 đã triển khai; Task 28–30 done, Task 31–33 còn nghiệm thu thủ công/phần cứng; đặc tả và kết quả kiểm tra code ở phần bổ sung tương ứng trong task.md. Quy ước rectangle giữ nguyên stroke width thay thế scale cả stroke trước đây. Giữ nguyên checkbox Task 01–27.
+
+## Task 28: Sửa độ dày viền rectangle khi resize
+
+- [x] Triển khai code Task 28.
+**Status: done**
+
+**Description:** Scale geometry rectangle rồi stroke với width cố định; đồng bộ bounds/hit-test và bổ sung test đo viền độc lập.
+**Acceptance criteria:**
+- [x] Bốn cạnh cùng width khi kéo ngang/dọc/góc hoặc resize lặp lại; pixel test phát hiện lỗi trước sửa và đạt sau sửa.
+- [x] Tám neo, Shift giữ tỷ lệ, min size và clamp vẫn đúng; chọn/xóa nét sau resize đúng dung sai.
+- [x] Preview/export đồng nhất; circle, arrow, freehand và blur giữ hành vi cũ.
+**Verification:**
+- [x] pnpm.cmd test -- tests/transform.test.ts; pnpm.cmd typecheck; pnpm.cmd build.
+- [x] pnpm.cmd exec playwright test tests/e2e/render.spec.ts tests/e2e/rotation-render.spec.ts; đo cạnh trên fixture phẳng, sai số khử răng cưa tối đa 1 px.
+**Dependencies:** Code Task 23–27 hiện có.
+**Files likely touched:** src/editor/transform.ts, src/editor/render.ts, src/editor/hit-test.ts, tests/transform.test.ts, tests/e2e/render.spec.ts.
+**Estimated scope:** M, 5 file.
+
+## Task 29: Geometry xoay và contract annotation
+
+- [x] Triển khai code Task 29.
+**Status: done**
+
+**Description:** Thêm rotation mặc định 0, tâm/oriented bounds/world AABB và phép thuận/nghịch dùng chung cho bốn loại yêu cầu.
+**Acceptance criteria:**
+- [x] Annotation cũ giữ identity; thứ tự scale/translate/rotate và đơn vị radian được xác định, không thay đổi đối tượng gốc.
+- [x] Góc 0/45/90/180/270/360°, inverse round-trip, tâm và bounds chứa đủ hình/glyph/stroke đạt.
+- [x] Xoay hai chiều qua 0° liên tục, snap 15° đúng, con trỏ sát tâm không sinh NaN; arrow ngang/dọc có bounds hữu hạn.
+**Verification:**
+- [x] pnpm.cmd test -- tests/rotation.test.ts; pnpm.cmd typecheck; pnpm.cmd build.
+**Dependencies:** 28.
+**Files likely touched:** src/editor/model.ts, src/editor/transform.ts, src/editor/glyph-layout.ts, tests/rotation.test.ts.
+**Estimated scope:** M, 4 file.
+
+## Checkpoint sau Task 29
+- [x] Test viền bắt đúng lỗi độc lập với so sánh export; geometry xoay có evidence và build sạch.
+- [x] Các quy ước mới không làm sai bounds/neo resize đã có.
+
+## Task 30: Render và chọn đối tượng đã xoay
+
+- [x] Triển khai code Task 30.
+**Status: done**
+
+**Description:** Tích hợp rotation vào paint, inverse hit-test, bounds và dirty region trước khi nối thao tác chuột.
+**Acceptance criteria:**
+- [x] Arrow, rectangle, Text và Emoji xoay đúng quanh tâm; rectangle vẫn viền đều, glyph giữ nội dung/màu.
+- [x] Chọn đúng nét/glyph sau xoay, dung sai đúng zoom; vùng ngoài oriented box không bị nhận nhầm chỉ vì nằm trong AABB.
+- [x] Incremental preview bằng fresh export sau xoay/xóa/hủy; không sót pixel ở góc cũ, clipping đúng.
+**Verification:**
+- [x] pnpm.cmd test -- tests/rotation.test.ts; pnpm.cmd typecheck; pnpm.cmd build.
+- [x] pnpm.cmd exec playwright test tests/e2e/render.spec.ts tests/e2e/rotation-render.spec.ts; fixture bốn loại ở góc vuông và 45°.
+**Dependencies:** 29.
+**Files likely touched:** src/editor/render.ts, src/editor/hit-test.ts, tests/rotation.test.ts, tests/e2e/render.spec.ts.
+**Estimated scope:** M, 4 file.
+
+## Task 31: Handle xoay và resize theo trục đã xoay
+
+- [x] Triển khai code Task 31.
+**Status: needs review — code và regression tự động đã hoàn tất; xem các mục manual còn mở và docs/windows-qa.md.**
+
+**Description:** Nối oriented selection và rotate gesture; cập nhật move/resize theo local axes giữ neo world.
+**Acceptance criteria:**
+- [x] Bốn loại có handle xoay riêng, label/góc hiện tại, hit target ổn định theo CSS; kéo đủ vòng hai chiều và Shift snap 15°.
+- [x] Tám handle resize sau xoay giữ neo đối diện, glyph uniform, min/max/clamp đúng; move/rotate/resize lặp lại không drift hoặc flip.
+- [x] Pointer-up commit; Escape/cancel/lost capture/resize cửa sổ phục hồi snapshot; kéo ngoài canvas và khóa thao tác xung đột đúng.
+**Verification:**
+- [x] pnpm.cmd test -- tests/rotation.test.ts; pnpm.cmd typecheck; pnpm.cmd build.
+- [ ] pnpm.cmd exec playwright test tests/e2e/rotation.spec.ts; manual các handle ở 0/45/90/270°, sát biên và zoom nhỏ.
+**Dependencies:** 30.
+**Files likely touched:** src/editor/SelectionHandles.tsx, src/editor/Editor.tsx, src/editor/transform.ts, src/styles.css, tests/e2e/rotation.spec.ts.
+**Estimated scope:** M, 5 file chính; bổ sung ca geometry vào tests/rotation.test.ts nếu phát hiện edge case mới.
+
+## Checkpoint sau Task 31
+- [x] Xoay, resize và move đủ bốn loại hoạt động; pixel viền, cancel và dirty region đạt.
+- [x] Không regression tám handles của circle/freehand/blur hoặc quy tắc layer/clip.
+
+## Task 32: Sửa text và đổi size sau xoay
+
+- [x] Triển khai code Task 32.
+**Status: needs review — code và regression tự động đã hoàn tất; xem các mục manual còn mở và docs/windows-qa.md.**
+
+**Description:** Giữ rotation và điểm đặt local khi composer/slider thay đổi glyph layout; xác nhận thao tác sau xoay.
+**Acceptance criteria:**
+- [ ] Double-click text đã xoay mở composer; commit/hủy giữ góc, không làm mất nội dung tiếng Việt nhiều dòng/IME.
+- [x] Đổi màu, fontSize/emoji size sau xoay đồng bộ bounds/selection; giới hạn size và emoji ZWJ giữ nguyên.
+- [x] Xóa/cancel không sót glyph; sửa layout không nhảy vị trí trong drag và giữ điểm đặt local khi commit.
+**Verification:**
+- [x] pnpm.cmd test -- tests/text-layout.test.ts; pnpm.cmd typecheck; pnpm.cmd build.
+- [ ] pnpm.cmd exec playwright test tests/e2e/rotation.spec.ts; manual IME và slider min/max.
+**Dependencies:** 31.
+**Files likely touched:** src/editor/Editor.tsx, src/editor/TextComposer.tsx, src/stores/editor.ts, src/editor/glyph-layout.ts, tests/e2e/rotation.spec.ts.
+**Estimated scope:** M, 5 file.
+
+## Task 33: Regression và tài liệu nghiệm thu
+
+- [x] Triển khai code Task 33.
+**Status: needs review — code và regression tự động đã hoàn tất; xem các mục manual còn mở và docs/windows-qa.md.**
+
+**Description:** Kiểm tra chuỗi thao tác hoàn chỉnh, ảnh xuất và hiệu năng; cập nhật hướng dẫn/QA theo evidence thực tế.
+**Acceptance criteria:**
+- [x] Typecheck, unit, build, Electron transform/render/rotation và regression hiện có đạt; 4K giữ ngưỡng kiểm thử hiện tại.
+- [ ] Copy/PNG đúng hướng và viền đều, không chứa selection/handle; smoke executable mới đạt, native Save kiểm tra thủ công.
+- [x] README/QA/log ghi cách xoay, Shift snap và stroke cố định; DPI/mixed DPI chưa thử vẫn để mở, không tự publish.
+**Verification:**
+- [x] pnpm.cmd typecheck; pnpm.cmd test; pnpm.cmd build; pnpm.cmd exec playwright test.
+- [x] pnpm.cmd exec electron-builder --win nsis --x64 --publish never; smoke qua SCREENSHOT_EXECUTABLE.
+- [ ] Manual 100/125/150/200% nếu có môi trường; ghi evidence và giới hạn, không coi mock là nghiệm thu phần cứng.
+**Dependencies:** 28–32.
+**Files likely touched:** tests/e2e/render.spec.ts, tests/e2e/rotation.spec.ts, README.md, docs/windows-qa.md, .agents/implements/implement-notes.html.
+**Estimated scope:** M, 5 file chính; cập nhật checkbox plan khi bàn giao.
+
+## Checkpoint sau Task 33
+- [x] Đủ yêu cầu xoay 360° bốn loại và sửa viền không đều; kết quả test/packaged smoke được ghi lại.
+- [x] Phần chưa nghiệm thu được nêu rõ; tài liệu và bản build sẵn sàng review.
+
+Thứ tự thực hiện: 28 → 29 → 30 → 31 → 32 → 33. Đã triển khai theo yêu cầu “implement đi”. Typecheck/build, 89 unit tests và 14/14 desktop E2E cuối đạt; 11/11 tests trên executable đóng gói đạt. Kết quả desktop đầy đủ và các lần chạy lại ghi tại docs/windows-qa.md. Các checkbox còn mở chứa nghiệm thu manual/IME/native Save/DPI chưa thực hiện; không thay đổi Task 01–27.

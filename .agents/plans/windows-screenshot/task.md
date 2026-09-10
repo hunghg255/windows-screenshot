@@ -1,7 +1,8 @@
-﻿# Kế hoạch: Ứng dụng Windows Screenshot
+# Kế hoạch: Ứng dụng Windows Screenshot
 
-Ngày lập/cập nhật: 2026-09-09. Baseline MVP đã triển khai và có installer; một số nghiệm thu thủ công còn mở. Bổ sung Text, Emoji và sửa chọn màn hình đã triển khai (Task 16–22). Status: needs review — build/typecheck, 48 unit tests, 8 desktop tests và 7 tests trên executable 0.2.0 đều đạt; nghiệm thu thủ công/phần cứng còn mở, xem docs/windows-qa.md.
+Ngày lập/cập nhật: 2026-09-10. Baseline MVP đã triển khai và có installer; một số nghiệm thu thủ công còn mở. Bổ sung Text, Emoji và sửa chọn màn hình đã triển khai (Task 16–22). Status: needs review — build/typecheck, 48 unit tests, 8 desktop tests và 7 tests trên executable 0.2.0 đều đạt; nghiệm thu thủ công/phần cứng còn mở, xem docs/windows-qa.md.
 Dự án đã có AGENTS.md, pnpm, build/test và implementation log. Kết quả baseline nằm tại docs/windows-qa.md và .agents/implements/implement-notes.html.
+Bổ sung mới 2026-09-10: xoay 360° và sửa độ dày viền rectangle khi resize (Task 28–33), code complete; needs review cho nghiệm thu manual/hardware.
 Task list duy nhất: [todo.md](todo.md), cùng thư mục .agents/plans/windows-screenshot/.
 
 ## Mục tiêu và phạm vi
@@ -220,3 +221,47 @@ Trạng thái Task 16–22: code đã triển khai trong 0.2.0, needs review cho
 - Quy ước Text/Emoji giữ tỷ lệ và hình/nét scale cả stroke là mặc định của plan, có thể điều chỉnh theo feedback trước khi triển khai. Đã triển khai theo quy ước trên trong 0.3.0; còn review các trường hợp thủ công/phần cứng được liệt kê trong QA.
 
 
+
+## Bổ sung: Xoay 360° và viền chữ nhật đều khi resize (2026-09-10)
+
+**Status: needs review — đã triển khai theo yêu cầu “implement đi”.** Người dùng yêu cầu cập nhật plan, bổ sung xoay mũi tên, hình chữ nhật/vuông, text, icon và kiểm tra các cạnh không đều khi resize. Task 28–33 trong todo.md là checklist thực hiện; giữ nguyên evidence và checkbox lịch sử. Phần này thay thế quy ước không rotation và scale cả stroke đối với rectangle trong Task 23–27.
+
+### Kết quả kiểm tra code và cách hiểu yêu cầu
+
+- `src/editor/transform.ts`: resizeAnnotation lưu scale X/Y độc lập cho drawing. `src/editor/render.ts`: paint gọi ctx.scale(t.sx, t.sy) trước khi stroke với a.width. Vì vậy rectangle bị scale cả nét: cạnh dọc có độ dày width × sx, cạnh ngang width × sy. Ví dụ width = 4, sx = 2, sy = 1 tạo cạnh dọc 8 px và ngang 4 px. Đây là nguyên nhân xác định qua code; chưa tái hiện bằng đo pixel desktop trong lần lập plan này.
+- Test transform hiện kiểm tra neo, bounds, clamp và preview/export đồng nhất; chưa kiểm tra độ dày bốn cạnh. Hai ảnh giống nhau vẫn có thể cùng mang lỗi viền.
+- Hiểu “size các cạnh không đều” là độ dày viền không đều. Chiều dài ngang/dọc của chữ nhật vẫn được thay đổi độc lập; Shift khi kéo góc giữ tỷ lệ, Shift khi vẽ tạo vuông. Hiểu “icon” là annotation Emoji hiện có, không thêm import SVG/ảnh.
+
+### Hành vi cần đạt
+
+- Rectangle/vuông giữ nguyên độ dày width theo pixel ảnh gốc khi resize cả đều và không đều. Chỉ geometry đổi kích thước; bốn cạnh cùng độ dày. Màu, góc bo nét và slider width vẫn hoạt động. Preview và Copy/Save dùng chung quy tắc.
+- Select mũi tên, rectangle/vuông, Text hoặc Emoji hiện handle xoay riêng phía trên khung chọn; kéo tự do đủ 360° theo hai chiều quanh tâm đối tượng. Khung và tám handle resize quay cùng đối tượng, hit target giữ kích thước CSS khi zoom; handle xoay có accessible label và hiển thị góc hiện tại. Shift khi xoay snap 15°; Shift khi resize góc giữ nghĩa khóa tỷ lệ.
+- Tâm xoay lấy từ tâm bounds hình học/layout không có padding UI, cố định theo snapshot lúc bắt đầu kéo. Góc dương theo chiều kim đồng hồ, lưu radian chuẩn hóa [0, 2π); hiển thị độ [0, 360). Đi qua 0°/360° không nhảy; xoay không đổi size, vị trí tâm hoặc stroke width.
+- Tọa độ con trỏ cho xoay được đổi sang pixel ảnh nhưng không clamp vào ảnh để kéo tròn ngoài canvas vẫn đúng. Khi con trỏ sát tâm, giữ góc hợp lệ gần nhất. Cho phép phần đối tượng xoay vượt biên và clip theo screenshot, không tự co nhỏ hoặc dịch tâm để ép vào ảnh. Handle ngoài ảnh còn trong viewport vẫn thao tác được.
+- Sau xoay vẫn chọn, di chuyển, resize đủ tám handle, đổi màu/size theo loại, sửa text và xóa được. Resize theo trục local đã xoay, giữ neo đối diện trong tọa độ ảnh; Text/Emoji luôn uniform và giữ giới hạn size hiện có. Không flip hoặc drift qua nhiều chuỗi resize → rotate → move.
+- Pointer-up commit; Escape, pointercancel, lost capture hoặc đổi kích thước cửa sổ hủy về snapshot. Copy/Save, đổi tool và sửa text bị khóa trong drag như hiện tại. Click không kéo không tạo thay đổi. Composer giữ góc cũ khi sửa text; giữ điểm đặt local khi layout đổi, chỉ chốt lại tâm từ layout mới sau commit, tránh nhảy trong drag.
+- Không bổ sung rotation cho circle/freehand/blur trong phạm vi này. Giữ hành vi resize hiện có của chúng và mũi tên; không tự đổi stroke policy của loại khác. Không thêm undo/redo hoặc xoay ảnh nền.
+
+### Thiết kế và thứ tự tích hợp
+
+1. Sửa rectangle trước: áp dụng transform scale/translation vào tọa độ đường viền rồi stroke một lần với width không scale. Bounds và hit-test dùng chính geometry đã biến đổi cộng nửa độ dày nét; không sửa bằng cách chia lineWidth cho một tỷ lệ trung bình vì không xử lý đúng sx khác sy. Tách bounds geometry, bounds có stroke và padding UI; giữ neo/clamp khi thay đổi quy tắc stroke.
+2. Bổ sung rotation tùy chọn cho bốn loại hỗ trợ, mặc định 0 cho dữ liệu cũ. Dùng thứ tự local geometry → scale/translation hiện có → rotate quanh tâm trong tọa độ ảnh; glyph vẫn resize bằng fontSize/size. Các helper dùng chung trả tâm, góc, bốn góc oriented bounds, world AABB và phép biến đổi thuận/nghịch. Không chỉ thêm ctx.rotate mà bỏ qua bounds/hit-test.
+3. Paint áp rotation trong save/restore; rectangle stroke sau scale geometry để viền đều. Hit-test inverse rotation trước khi xét geometry; dung sai dựa trên zoom. Dirty region là hợp world AABB cũ/mới gồm stroke/arrowhead và padding khử răng cưa, kể cả lúc cancel/delete. Preview và export dùng cùng renderer.
+4. Overlay dùng oriented frame; resize đổi delta về trục local và giải lại translation để neo world không đổi. Clamp resize dựa trên các góc world đã xoay, không dùng giới hạn axis-aligned cũ trực tiếp. Khi ban đầu fit trong ảnh thì giữ fit; trường hợp đã clip giữ quy ước không nhảy và tối thiểu phần giao khi move.
+5. Nối rotate drag từ snapshot vào Editor, pointer capture và commit hiện có; Zustand giữ annotation đã commit. Kiểm tra composer/slider không làm mất rotation, layout/font bounds mới nhất dùng chung cho chọn và xuất.
+
+### Nghiệm thu và rủi ro
+
+- Unit: rotation 0/45/90/180/270/360°, góc qua seam theo cả hai chiều, inverse round-trip, world AABB, tám neo resize sau xoay, min/max glyph size, đường mũi tên ngang/dọc, snapshot không mutate và không drift.
+- Electron pixel test trên fixture nền phẳng: rectangle resize ngang/dọc/đều, phóng to rồi thu nhỏ nhiều lần, kiểm tra độ dày bốn cạnh ở 0° và 90° (dung sai tối đa 1 pixel khử răng cưa); 45° đo theo pháp tuyến cạnh hoặc so fixture hình học độc lập. Không chỉ so preview với export.
+- E2E: kéo xoay đủ bốn loại, snap, cancel, resize/move sau xoay, text tiếng Việt nhiều dòng và emoji ZWJ, sửa text/slider, clipping, xóa, Copy/Save không chứa handles; so incremental render với fresh render để phát hiện pixel sót.
+- Rủi ro chính: thứ tự transform gây lệch tâm/neo, bounds thiếu vùng quay, font layout đổi làm nhảy vị trí, clamp ngăn xoay đủ vòng sát biên. Task geometry và pixel regression làm trước UI; giới hạn phần cứng/DPI chưa thử tiếp tục ghi needs review.
+- Kiểm tra khi triển khai: pnpm.cmd typecheck; pnpm.cmd test; pnpm.cmd build; Electron E2E liên quan transform/render và regression hiện có; smoke executable đóng gói. Cập nhật QA với evidence thực tế, không tự publish.
+
+### Kết quả triển khai (2026-09-10)
+
+- Task 28–30 done; Task 31–33 code complete, needs review cho nghiệm thu manual/hardware. Giữ checkbox/evidence Task 01–27.
+- Pixel regression tái hiện nét 8 px bị kéo thành 16 px trước sửa; sau sửa bốn cạnh giữ width. Rectangle scale geometry rồi stroke, có kiểm thử path tham chiếu độc lập cho góc 45°/90° và các góc khác.
+- Rotation dùng helper chung trong transform.ts (render.ts re-export bounds), oriented handles và neo world; inverse hit-test, dirty AABB và export đồng bộ. Glyph composer/slider bù translation để giữ điểm đặt trên ảnh khi layout và tâm thay đổi trong preview; tâm drag luôn cố định từ snapshot.
+- Typecheck/build, 89 unit tests và 14/14 desktop E2E cuối đạt; 11/11 tests trên Screenshot.exe đóng gói đạt. Kết quả desktop, timing 4K và lần chạy lại được ghi trong docs/windows-qa.md. Có ảnh QA nền tổng hợp tại docs/images/rotation-preview.png.
+- Installer local: release/windows-x64-rotation/Screenshot-Setup-0.3.3-windows-x64.exe. Giữ package version 0.3.3, không commit/tag/publish. Native Save/IME, DPI vật lý 125/150/200% và mixed DPI, Windows 11 và installer wizard vẫn chưa nghiệm thu.

@@ -1,13 +1,16 @@
 import type { Point } from '../../shared/contracts';
 import { arrowHead, type Annotation } from './model';
 import { measureGlyph } from './glyph-layout';
-import { inversePoint } from './transform';
+import { boxCenter, frameBounds, identity, inversePoint, rotatePoint, rotationOf, transformPoint } from './transform';
 export function segmentDistance(p: Point, a: Point, b: Point) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 export function hit(a: Annotation, p: Point, tolerance: number) {
+  const rotation = rotationOf(a);
+  if (rotation) return hit({ ...a, rotation: 0 }, rotatePoint(p, boxCenter(frameBounds(a)), -rotation), tolerance);
+  if (a.type === 'rectangle' && a.transform) return hit({ ...a, start: transformPoint(a.start, a.transform ?? identity), end: transformPoint(a.end, a.transform ?? identity), transform: undefined }, p, tolerance);
   if ('transform' in a && a.transform) return hit({ ...a, transform: undefined }, inversePoint(p, a.transform), tolerance / Math.min(a.transform.sx, a.transform.sy));
   if (a.type === 'text' || a.type === 'emoji') { const b = measureGlyph(a).bounds; return p.x >= b.x - tolerance && p.x <= b.right + tolerance && p.y >= b.y - tolerance && p.y <= b.bottom + tolerance; }
   const t = tolerance + a.width / 2;

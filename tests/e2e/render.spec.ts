@@ -5,7 +5,7 @@ import { tmpdir, cpus } from 'node:os';
 import { join, resolve } from 'node:path';
 
 test('Electron Canvas: blur masks, layer order, restoration, export and 4K frame timing', async ({}, info) => {
-  const server = await createServer({ server: { port: 0, strictPort: false } }); await server.listen();
+  const server = await createServer({ cacheDir: await mkdtemp(join(tmpdir(), 'screenshot-vite-render-')), server: { port: 0, strictPort: false } }); await server.listen();
   const address = server.httpServer!.address() as { port: number };
   const env: Record<string, string> = { ...Object.fromEntries(Object.entries(process.env).filter((p): p is [string, string] => p[1] !== undefined)), SCREENSHOT_DEV_URL: `http://127.0.0.1:${address.port}`, SCREENSHOT_TEST_USER_DATA: await mkdtemp(join(tmpdir(), 'screenshot-render-')) }; delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [resolve('.')], env });

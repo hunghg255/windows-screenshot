@@ -147,3 +147,42 @@ Installer size fell 9.81%; the unpacked application is 87057846 bytes smaller. A
 Validation: `pnpm build` (including typecheck), 59 unit tests, and all 9 packaged desktop E2E tests passed. E2E covered native hotkeys on two monitors, 30 capture cycles, full/region capture, fallback capture, drawing/glyph transforms, clipboard and PNG save integration. Desktop E2E required execution outside the sandbox and a separate output directory (`test-results/optimized-build`) after Windows denied cleanup of earlier test output. The native Save chooser and installer wizard were not manually tested. Dependency installation used the available Node 22.22.0 runtime after pnpm's node_modules recreation stalled under Node 24.
 
 Build command: `pnpm exec electron-builder --win nsis --x64 --publish never --config.directories.output=release/windows-x64-optimized`. No release was published.
+
+## Rotation and even rectangle strokes — 2026-09-10
+
+Status: code complete; needs review for the manual/hardware items below. Source: Windows screenshot plan Task 28–33 and the user's implementation request. Local package version remains 0.3.3; this is an unpublished working-tree build.
+
+Implemented:
+
+- Arrow, rectangle/square, Text and Emoji can rotate freely through 360° in either direction around their center. The round handle displays the angle; Shift snaps to 15°. Eight resize handles follow the rotated axes and preserve the opposite world-space anchor. Text/Emoji keep uniform sizing and their size limits.
+- Rectangle scale applies to geometry only, preserving equal stroke width on all sides. Selecting a rectangle shows its actual width; the Size slider edits its outline. Bounds and hit testing follow the fixed-width outline; Shift keeps rectangle geometry aspect and flat rectangles can grow.
+- World/local geometry is shared by rendering, selection, inverse hit testing, clipping and dirty regions. Pointer-up commits; existing interruption/cancellation handling restores the snapshot. Text composer/size changes preserve the angle and world placement point. Blur and other drawing tools retain their existing stroke scaling.
+- The editor reserves room for the rotation handle. Vite render tests use isolated temporary caches because Windows locked the shared dependency cache during an early run.
+
+Validation:
+
+| Check | Result |
+|---|---|
+| TypeScript + production build | Passed (`pnpm.cmd build`, includes typecheck) |
+| Full Vitest suite | 89 tests in 14 files passed |
+| Final Electron desktop suite | 14/14 passed, `test-results/rotation-final` |
+| Packaged executable suite | 11/11 passed, `test-results/rotation-packaged`; no Vite |
+| Independent stroke regression | Before fix: requested 8 px became 16 px on a scaled edge. After fix: all four sides remain 8 px within 1 px antialias tolerance under nonuniform/uniform enlargement and shrinking |
+| Rotated reference paths | 0/45/90/180/270/360° agree with an independently constructed, constant-width world-space rectangle path |
+| Incremental/fresh render | Equal after rotate/resize/move/clip/cancel/delete for all four supported types, including multiline Vietnamese and Emoji ZWJ |
+| Mouse and clipboard | Full clockwise/counterclockwise turns, 15° snapping, all eight anchors at 45°, move, Escape/pointercancel rollback, text edit/cancel/slider, and pixel-exact Windows clipboard with selection visible passed |
+| 4K render/readback | Final p95 3.30 ms, below the existing 33 ms gate; synthetic Canvas benchmark, not physical 4K desktop latency |
+| Native desktop regression | Two displays at 100% (1920×1080 and 1920×1200 at negative origin), hotkey while another process has focus, region/fallback, settings persistence, Save integration and 30 capture/cancel cycles passed |
+| Packaged lifecycle | Working set at cycles 1/10/20/30: 405472/435772/510616/482796 KB; one Settings window after each cancellation |
+| Visual review | [Synthetic rotation preview](images/rotation-preview.png) inspected; no captured desktop in this image |
+
+One initial full desktop run passed 13/14: the Freehand iteration in the existing move/resize test reported zero displacement. Its isolated rerun passed, the packaged suite passed it, and the final complete 14-test rerun passed without retries. The initial trace does not establish a root cause; retain that observation if desktop-pointer flakiness recurs. Earlier failures from the shared Vite cache and duplicate status semantics were resolved before the final runs.
+
+Artifacts:
+
+- Installer: `release/windows-x64-rotation/Screenshot-Setup-0.3.3-windows-x64.exe` (103522202 bytes).
+- Executable: `release/windows-x64-rotation/win-unpacked/Screenshot.exe`.
+- SHA-256: `FC678C5D4E0EC4B6CF5810F58A8C097CA6302EA1FD26D3DCB183B3E84618C104`.
+- Built with `pnpm.cmd exec electron-builder --win nsis --x64 --publish never --config.directories.output=release/windows-x64-rotation`. No commit, tag, version bump or publication.
+
+Remaining manual acceptance: Windows 11; physical DPI 125/150/200%, mixed DPI and 4K; native OS IME entry; native Save dialog (folder/overwrite/cancel/errors), Paint paste; real external pointer interruptions and exhaustive edge/zoom cases; interactive installer install/uninstall. Save integration substitutes the native chooser. Programmatic Unicode/cancellation checks and synthetic fixtures do not establish those manual results. Historical manual items stay open.
