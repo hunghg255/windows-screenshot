@@ -6,3 +6,4 @@ release/
 test-results/
 playwright-report/
 *.log
+.cache
