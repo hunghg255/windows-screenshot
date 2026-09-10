@@ -36,7 +36,7 @@ input[type="range"] { accent-color: var(--color-primary); }
 .canvas-area { flex: 1; min-height: 0; padding: 28px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #737373; }
 .canvas-area canvas { display: block; touch-action: none; box-shadow: 0 0 0 1px #ffffff66, 0 0 0 2px #00000066, 0 12px 32px #00000040; }
 .canvas-stage { position: relative; flex: none; }
-.annotation-selection { position: absolute; border: 1px dashed #ffffff; cursor: move; touch-action: none; }
+.annotation-selection { position: absolute; border: 1px dashed #737373; cursor: move; touch-action: none; }
 .resize-handle { position: absolute; width: 16px; height: 16px; transform: translate(-50%, -50%); padding: 0; border: 0; background: transparent; touch-action: none; }
 .resize-handle::after { content: ''; position: absolute; inset: 4px; background: #fff; border: 1px solid var(--color-background); }
 .resize-handle:focus-visible { outline: 2px solid var(--color-ring); }
