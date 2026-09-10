@@ -1,4 +1,4 @@
-const { readFileSync, statSync, writeFileSync } = require('node:fs');
+const { readFileSync, statSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
@@ -17,9 +17,11 @@ async function publishRelease({ tag, version, repository, directory }, dependenc
   if (readFileSync(paths[1], 'utf8').trim() !== `${hash}  ${release.installer}`) throw new Error('Installer checksum mismatch.');
 
   const endpoint = `https://api.github.com/repos/${repository}/releases`;
+  const headers = { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28' };
   async function getRelease(path) {
     const response = await request(`${endpoint}${path}`, {
-      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+      headers,
     });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Release lookup failed: HTTP ${response.status}.`);
@@ -49,15 +51,20 @@ async function publishRelease({ tag, version, repository, directory }, dependenc
   }
   const repoArgs = ['--repo', repository];
   if (!remote) {
+    // Preserve --verify-tag behavior: never create a release for a missing tag.
+    const tagResponse = await request(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { headers });
+    if (!tagResponse.ok) throw new Error(`Release tag verification failed: HTTP ${tagResponse.status}.`);
     const notes = `Download ${release.installer} under Assets and run it on Windows x64. Node.js is not required.\n\nThis installer is unsigned. In-app automatic updates are not included. SHA256SUMS.txt contains the installer checksum.`;
-    const notesPath = join(resolve(directory), 'RELEASE-NOTES.md');
-    writeFileSync(notesPath, notes);
-    const args = ['release', 'create', tag, ...repoArgs, '--verify-tag', '--draft', '--generate-notes', '--notes-file', notesPath];
-    if (release.prerelease) args.push('--prerelease', '--latest=false');
-    run(args);
-    remote = await lookup();
+    const created = await request(endpoint, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag_name: tag, body: notes, draft: true, prerelease: release.prerelease,
+        generate_release_notes: true, ...(release.prerelease ? { make_latest: 'false' } : {}) }),
+    });
+    if (!created.ok) throw new Error(`Draft release creation failed: HTTP ${created.status}.`);
+    // Use the creation response directly; draft discovery can lag behind creation.
+    remote = await created.json();
   }
-  if (!remote) throw new Error('Draft release was not found after creation; refusing to upload.');
+  if (!Number.isSafeInteger(remote?.id) || remote.id <= 0) throw new Error('Draft release has no valid ID; refusing to upload.');
   if (!remote.draft) throw new Error('Release is no longer a draft; refusing to replace assets.');
   // Only drafts can reach this point. Never replace assets of a published release.
   run(['release', 'upload', tag, ...paths, ...repoArgs, '--clobber']);

@@ -14,7 +14,7 @@ describe('release publication', () => {
   const checksum = `${createHash('sha256').update(binary).digest('hex')}  ${installer}\n`;
   const assets = [{ name: installer, size: binary.length, state: 'uploaded' },
     { name: 'SHA256SUMS.txt', size: Buffer.byteLength(checksum), state: 'uploaded' }];
-  const response = (status: number, body?: unknown) => ({ status, ok: status === 200, json: async () => body });
+  const response = (status: number, body?: unknown) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
   const options = () => ({ tag: `v${version}`, version, repository: 'owner/repo', directory });
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), 'screenshot-release-test-'));
@@ -23,21 +23,22 @@ describe('release publication', () => {
   });
   afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
-  it('creates a draft, uploads assets, then publishes', async () => {
+  it('uses the created draft ID without rediscovering it by tag or listing', async () => {
     const run = vi.fn();
     const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
-      .mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, [{ id: 42, tag_name: `v${version}`, draft: true, assets: [] }]))
+      .mockResolvedValueOnce(response(200, { ref: `refs/tags/v${version}` }))
+      .mockResolvedValueOnce(response(201, { id: 42, tag_name: `v${version}`, draft: true, assets: [] }))
       .mockResolvedValueOnce(response(200, { id: 42, draft: true, assets }));
     await publishRelease(options(), { request, run });
-    expect(run.mock.calls.map(call => call[0][1])).toEqual(['create', 'upload', 'edit']);
-    expect(run.mock.calls[0][0]).toContain('--draft');
-    expect(run.mock.calls[0][0]).toContain('--verify-tag');
-    expect(run.mock.calls[2][0]).toContain('--prerelease=false');
+    expect(run.mock.calls.map(call => call[0][1])).toEqual(['upload', 'edit']);
+    expect(run.mock.calls[1][0]).toContain('--prerelease=false');
+    expect(request.mock.calls[3][1].method).toBe('POST');
+    expect(JSON.parse(request.mock.calls[3][1].body)).toMatchObject({ tag_name: `v${version}`, draft: true, generate_release_notes: true });
     expect(request.mock.calls.map(call => call[0])).toEqual([
       'https://api.github.com/repos/owner/repo/releases/tags/v0.1.0',
       'https://api.github.com/repos/owner/repo/releases?per_page=100&page=1',
-      'https://api.github.com/repos/owner/repo/releases/tags/v0.1.0',
-      'https://api.github.com/repos/owner/repo/releases?per_page=100&page=1',
+      'https://api.github.com/repos/owner/repo/git/ref/tags/v0.1.0',
+      'https://api.github.com/repos/owner/repo/releases',
       'https://api.github.com/repos/owner/repo/releases/42',
     ]);
   });
@@ -49,6 +50,28 @@ describe('release publication', () => {
     await publishRelease(options(), { request, run });
     expect(run.mock.calls.map(call => call[0][1])).toEqual(['upload', 'edit']);
     expect(request.mock.calls[2][0]).toBe('https://api.github.com/repos/owner/repo/releases/42');
+  });
+  it('does not create a draft when the remote tag is missing', async () => {
+    const run = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
+      .mockResolvedValueOnce(response(404));
+    await expect(publishRelease(options(), { request, run })).rejects.toThrow('tag verification failed: HTTP 404');
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(run).not.toHaveBeenCalled();
+  });
+  it.each([401, 403, 422])('reports draft creation HTTP %s without uploading', async status => {
+    const run = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
+      .mockResolvedValueOnce(response(200)).mockResolvedValueOnce(response(status));
+    await expect(publishRelease(options(), { request, run })).rejects.toThrow(`creation failed: HTTP ${status}`);
+    expect(run).not.toHaveBeenCalled();
+  });
+  it('rejects a creation response without a release ID', async () => {
+    const run = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
+      .mockResolvedValueOnce(response(200)).mockResolvedValueOnce(response(201, { draft: true }));
+    await expect(publishRelease(options(), { request, run })).rejects.toThrow('no valid ID');
+    expect(run).not.toHaveBeenCalled();
   });
   it('leaves a complete published release unchanged, even if rebuild sizes differ', async () => {
     const run = vi.fn();
@@ -100,12 +123,12 @@ describe('release publication', () => {
   });
   it('does not publish if an upload fails', async () => {
     const run = vi.fn(() => { throw new Error('Upload failed'); });
-    await expect(publishRelease(options(), { run, request: async () => response(200, { draft: true, assets: [] }) })).rejects.toThrow('Upload failed');
+    await expect(publishRelease(options(), { run, request: async () => response(200, { id: 42, draft: true, assets: [] }) })).rejects.toThrow('Upload failed');
     expect(run).toHaveBeenCalledTimes(1);
   });
   it('does not publish a draft with incomplete uploaded assets', async () => {
     const run = vi.fn();
-    await expect(publishRelease(options(), { run, request: async () => response(200, { draft: true, assets: [] }) })).rejects.toThrow(/incomplete/);
+    await expect(publishRelease(options(), { run, request: async () => response(200, { id: 42, draft: true, assets: [] }) })).rejects.toThrow(/incomplete/);
     expect(run.mock.calls.map(call => call[0][1])).toEqual(['upload']);
   });
   it('rejects a corrupted installer before contacting GitHub', async () => {
@@ -123,11 +146,12 @@ describe('release publication', () => {
     const betaAssets = [{ ...assets[0], name: betaInstaller }, { ...assets[1], size: Buffer.byteLength(betaChecksum) }];
     const run = vi.fn();
     const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
-      .mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, [{ id: 43, tag_name: `v${betaVersion}`, draft: true, assets: [] }]))
+      .mockResolvedValueOnce(response(200, { ref: `refs/tags/v${betaVersion}` }))
+      .mockResolvedValueOnce(response(201, { id: 43, tag_name: `v${betaVersion}`, draft: true, assets: [] }))
       .mockResolvedValueOnce(response(200, { id: 43, draft: true, assets: betaAssets }));
     await publishRelease({ ...options(), tag: `v${betaVersion}`, version: betaVersion }, { request, run });
-    expect(run.mock.calls[0][0]).toContain('--latest=false');
-    expect(run.mock.calls[2][0]).toContain('--latest=false');
-    expect(run.mock.calls[2][0]).toContain('--prerelease=true');
+    expect(JSON.parse(request.mock.calls[3][1].body)).toMatchObject({ prerelease: true, make_latest: 'false' });
+    expect(run.mock.calls[1][0]).toContain('--latest=false');
+    expect(run.mock.calls[1][0]).toContain('--prerelease=true');
   });
 });
