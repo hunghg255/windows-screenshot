@@ -365,3 +365,32 @@ Task 40 circle/ellipse → Task 41 freehand → Task 42 pixel/E2E/export. Checkl
 - Kiểm chứng: build/typecheck, 123 unit tests; 11 test arrow mới. E2E stroke mở rộng có path tham chiếu độc lập, nét 8 px, đầu nhọn sau scale/xoay, short arrows, incremental/fresh/export, UI Size và Copy/Save đúng pixel. Ảnh Arrow.png nền tổng hợp đã xem.
 - Bộ liên quan lần đầu 6/7 đạt; test move mọi drawing nhận delta 0 thay vì 35 px. Chạy riêng lại cả hai test transform đạt, không sửa code; chưa xác định nguyên nhân lần tương tác thất bại. Bảy test E2E khác nhau đều đạt qua các lần chạy. Chi tiết ở docs/windows-qa.md.
 - Còn manual native Save/Paint, physical DPI/mixed DPI/4K và zoom/edge rộng hơn. Giữ version 0.3.5; chưa tạo installer/commit/tag/publish.
+
+
+
+## Bổ sung: Nút xoay toàn bộ ảnh chụp (2026-09-10)
+
+**Status: implemented — Task 44–45 done; Task 46 needs manual/hardware review.** Theo yêu cầu update plan, bổ sung Task 44–46; giữ nguyên trạng thái công việc trước.
+
+### Hành vi
+- Thêm một nút toolbar `Rotate screenshot 90° clockwise`, có icon, tooltip và accessible label. Mỗi lần bấm xoay toàn bộ ảnh cùng chú thích 90° theo chiều kim đồng hồ; bốn lần trở về hướng ban đầu.
+- Text, emoji, ảnh chèn, hình vẽ và blur xoay cùng screenshot, vẫn chỉnh sửa riêng được. Không flatten annotation khi xoay.
+- Đổi W/H hiển thị và xuất ở 90°/270°, tự fit vùng làm việc; Copy/Save PNG đúng hướng và độ phân giải, không cắt góc hoặc thêm khoảng trống.
+- Khóa nút khi chưa ready, đang import/output/vẽ/drag/composer/picker; trả focus canvas sau click. Phiên mới reset 0°.
+- V1 chỉ có bước 90°; không bổ sung xoay toàn ảnh tùy ý, flip hoặc undo/redo.
+
+### Thiết kế tích hợp
+- Editor.tsx hiện dùng capture.width/height cho canvas, fit, pointer, handles, footer. Rotation trong transform.ts là rotation từng annotation; cần thêm orientation toàn scene.
+- Lưu quarter-turns 0–3 trong Zustand, reset theo phiên. Giữ capture và annotation trong tọa độ gốc để tránh sai số và giữ blur đúng nguồn.
+- Helper thuần dùng chung cho kích thước theo hướng, tọa độ thuận/nghịch và vector drag. Phân biệt tọa độ biên với chỉ số pixel trong test.
+- Render scene trong tọa độ gốc, quay toàn scene tại bước trình bày và export. Cache/dirty-region giữ ở không gian gốc; đổi hướng redraw toàn vùng đích. Không chỉ xoay CSS khiến layout/export lệch nhau.
+- Pointer/drag quy đổi về tọa độ gốc; overlay handles chuyển ra hướng hiển thị. Rà soát fit, text/emoji placement, insert-at-center, W/H và clamp resize. W/H ảnh chèn vẫn là kích thước local.
+- Giữ IPC/session ID; kiểm tra output validator chấp nhận W/H hoán đổi. Tái sử dụng buffer, giải phóng theo phiên; không ghi ảnh tạm.
+
+### Thứ tự và rủi ro
+44 (state/geometry) → 45 (button/preview/interactions/export) → 46 (regression/QA). Checklist trong todo.md.
+Rủi ro: pointer/handles sai hướng, blur lệch nguồn, export sai W/H, tăng RAM. Kiểm chứng bằng ảnh không vuông có bốn góc khác màu, cả bốn hướng, chỉnh sửa sau xoay và so pixel xuất với tham chiếu độc lập.
+
+### Kết quả triển khai xoay ảnh
+
+Đã thêm nút xoay 90°, Zustand quarter-turns, preview/fit/pointer/handles/export đồng bộ và PNG validator nhận đúng W/H gốc hoặc hoán đổi. Không thay IPC. Build/typecheck, 126 unit tests và 7 E2E liên quan đạt; đã xem ảnh UI tổng hợp. So pixel dirty/full redraw dùng software rasterization do GPU có sai khác antialias giữa lần vẽ; app giữ cấu hình GPU hiện tại. Chi tiết tại docs/windows-qa.md. Còn manual Save/Paint, DPI/4K và zoom/edge rộng hơn; chưa build installer.

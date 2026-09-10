@@ -1,4 +1,5 @@
 import type { Annotation } from './model';
+import { rotatedSize, sceneMatrix, type QuarterTurns } from './screenshot-rotation';
 import { glyphFont, measureGlyph } from './glyph-layout';
 import { annotationBounds, arrowGeometry, boxCenter, ellipseGeometry, frameBounds, identity, rotationOf, transformPoint } from './transform';
 export { annotationBounds } from './transform';
@@ -78,10 +79,16 @@ export class Renderer {
     ctx.filter = 'blur(12px)'; ctx.drawImage(padded, -pad, -pad); ctx.filter = 'none';
     padded.width = 0;
   }
-  render(target: HTMLCanvasElement, annotations: Annotation[]) {
+  render(target: HTMLCanvasElement, annotations: Annotation[], turns: QuarterTurns = 0) {
     this.renderComposite(annotations);
+    const size = rotatedSize(this.composite, turns);
+    if (target.width !== size.width) target.width = size.width;
+    if (target.height !== size.height) target.height = size.height;
     const ctx = target.getContext('2d', { willReadFrequently: true })!;
-    ctx.clearRect(0, 0, target.width, target.height); ctx.drawImage(this.composite, 0, 0);
+    ctx.clearRect(0, 0, target.width, target.height);
+    ctx.save();
+    try { ctx.setTransform(...sceneMatrix(this.composite, turns)); ctx.drawImage(this.composite, 0, 0); }
+    finally { ctx.restore(); }
   }
   private renderComposite(annotations: Annotation[]) {
     const target = this.composite;
@@ -114,9 +121,12 @@ export class Renderer {
     ctx.restore();
   }
   invalidate(_target: HTMLCanvasElement) { this.previous.delete(this.composite); }
-  export(annotations: Annotation[]) {
+  export(annotations: Annotation[], turns: QuarterTurns = 0) {
     this.renderComposite(annotations);
-    return this.composite.toDataURL('image/png');
+    if (!turns) return this.composite.toDataURL('image/png');
+    const size = rotatedSize(this.composite, turns), target = canvas(size.width, size.height);
+    try { this.render(target, annotations, turns); return target.toDataURL('image/png'); }
+    finally { target.width = 0; target.height = 0; }
   }
   dispose() { this.composite.width = 0; this.blurred.width = 0; this.mask.width = 0; }
 }

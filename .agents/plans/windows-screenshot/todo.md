@@ -1023,3 +1023,51 @@ Status: implemented, needs manual review. Giữ nguyên Task 01–33 và bằng 
 **Dependencies:** Task 28–33 rotation và Task 40–42 fixed stroke đã triển khai.
 **Files:** src/editor/render.ts, transform.ts, hit-test.ts, src/stores/editor.ts, tests/arrow-resize.test.ts, tests/e2e/stroke-resize.spec.ts; README/QA/log.
 **Scope thực tế:** geometry/render + Size + automated/visual QA; không thêm UI hoặc thư viện.
+
+
+
+## Task 44: Trạng thái hướng ảnh và quy đổi tọa độ
+**Status: done.**
+**Description:** Thêm quarter-turns vào Zustand và helper orientation; giữ annotation trong tọa độ gốc.
+**Acceptance criteria:**
+- [x] Xoay tuần hoàn 0/1/2/3/0, reset phiên về 0, không thay annotation.
+- [x] Hoán đổi W/H ở 90°/270°; biến đổi điểm/vector thuận/nghịch đúng ở bốn hướng.
+- [x] Test góc/tâm/biên/round-trip trên ảnh không vuông; bốn lần xoay không tích lũy sai số.
+**Verification:** pnpm.cmd test -- tests/screenshot-rotation.test.ts tests/store.test.ts; pnpm.cmd typecheck.
+**Dependencies:** Editor/store hiện tại.
+**Files likely touched:** src/stores/editor.ts, src/editor/screenshot-rotation.ts (mới), tests/screenshot-rotation.test.ts (mới), tests/store.test.ts.
+**Estimated scope:** M (4 files).
+
+## Task 45: Nút xoay, preview, tương tác và export
+**Status: done.**
+**Description:** Nối một nút xoay 90° vào orientation toàn scene, cập nhật fit/pointer/handles/footer/export.
+**Acceptance criteria:**
+- [x] Nút có tooltip/accessible label; khóa đúng khi not-ready/busy/draft/drag/composer/picker, trả focus sau click.
+- [x] Scene/fit đúng W/H; chọn/vẽ/move/resize/rotate đối tượng, text/emoji placement và chèn ảnh đúng mọi hướng; blur giữ đúng nền.
+- [x] Copy/Save đúng hướng/kích thước, không có handles; dữ liệu annotation còn chỉnh sửa được, redraw không có vệt, buffer được giải phóng.
+**Verification:** pnpm.cmd typecheck; pnpm.cmd test; pnpm.cmd build; smoke tương tác bốn hướng. Rà soát output validator, ghi rõ phạm vi nếu cần sửa để nhận W/H hoán đổi.
+**Dependencies:** 44.
+**Files likely touched:** src/editor/Toolbar.tsx, src/editor/Editor.tsx, src/editor/render.ts, src/editor/SelectionHandles.tsx, src/editor/screenshot-rotation.ts.
+**Estimated scope:** M (5 files).
+
+## Checkpoint: Luồng xoay tích hợp
+- [x] Typecheck/unit/build đạt; preview, pointer và export cùng quy ước.
+
+## Task 46: Kiểm chứng xoay ảnh và cập nhật QA
+**Status: needs review — automated/visual passed; manual/hardware pending.**
+**Description:** Thêm E2E/pixel regression và ghi bằng chứng, giới hạn kiểm chứng.
+**Acceptance criteria:**
+- [x] Fixture không vuông bốn góc khác màu xác nhận 90°/180°/270°/360°; Copy/Save PNG đúng pixel/W/H theo tham chiếu độc lập.
+- [x] Test scene có text/emoji/image/shape/freehand/blur, chỉnh sửa sau xoay, khóa nút và reset phiên; bốn lần xoay trả về kết quả gốc.
+- [x] Ghi QA ảnh ngang/dọc, zoom/DPI, native Save/Paint và screenshot UI; chỉ đánh dấu kiểm tra đã thực hiện.
+**Verification:** pnpm.cmd typecheck; pnpm.cmd test; pnpm.cmd build; pnpm.cmd exec playwright test tests/e2e/screenshot-rotation.spec.ts tests/e2e/transform.spec.ts tests/e2e/rotation-render.spec.ts tests/e2e/image-import.spec.ts; manual native Save/Paint.
+**Dependencies:** 45.
+**Files likely touched:** tests/e2e/screenshot-rotation.spec.ts (mới), tests/screenshot-rotation.test.ts, docs/windows-qa.md, README.md.
+**Estimated scope:** M (4 files, cộng cập nhật trạng thái plan).
+
+## Checkpoint: Hoàn tất xoay ảnh chụp
+- [ ] Manual native Save/Paint, physical DPI/mixed DPI/4K và zoom/edge rộng hơn.
+- [x] Code và automated/visual QA hoàn tất; bằng chứng ghi trong docs/windows-qa.md.
+
+**Evidence:** Build/typecheck đạt; 126 unit tests; screenshot-rotation 2 passed, transform/rotation-render/image-import 5 passed. Synthetic pixel test dùng software rasterization để so antialias ổn định; real Copy/Save và regression dùng GPU mặc định. Save chooser được thay trong E2E.
+**Actual scope:** Thêm electron/image-output.ts để chấp nhận W/H hoán đổi, không đổi shared/preload API. Store regression mới nằm cùng tests/screenshot-rotation.test.ts.
