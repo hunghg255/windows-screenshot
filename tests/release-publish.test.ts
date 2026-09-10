@@ -23,6 +23,49 @@ describe('release publication', () => {
   });
   afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
+  it('recovers from a transient fetch failure with a bounded retry', async () => {
+    const run = vi.fn();
+    const wait = vi.fn();
+    const request = vi.fn().mockRejectedValueOnce(new TypeError('fetch failed', {
+      cause: Object.assign(new Error('connect timeout'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+    })).mockResolvedValueOnce(response(200, { draft: false, assets }));
+    await publishRelease(options(), { request, run, wait });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledWith(1000);
+    expect(request.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    expect(run).not.toHaveBeenCalled();
+  });
+  it('reports the operation, URL and nested network cause after retries are exhausted', async () => {
+    const run = vi.fn();
+    const wait = vi.fn();
+    const request = vi.fn().mockRejectedValue(new TypeError('fetch failed', {
+      cause: new AggregateError([Object.assign(new Error('connection timed out'), { code: 'ETIMEDOUT' })]),
+    }));
+    await expect(publishRelease(options(), { request, run, wait })).rejects.toThrow(
+      /Release lookup failed \(GET https:\/\/api.github.com\/repos\/owner\/repo\/releases\/tags\/v0.1.0\) after 3 attempt\(s\):.*ETIMEDOUT/);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(wait.mock.calls).toEqual([[1000], [2000]]);
+    expect(run).not.toHaveBeenCalled();
+  });
+  it('retries a transient server failure and a failed response body', async () => {
+    const cancel = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce({ ...response(503), body: { cancel } })
+      .mockResolvedValueOnce({ ...response(200), json: async () => { throw new Error('terminated'); } })
+      .mockResolvedValueOnce(response(200, { draft: false, assets }));
+    await publishRelease(options(), { request, run: vi.fn(), wait: vi.fn() });
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('does not retry an ambiguous draft creation failure or upload afterward', async () => {
+    const run = vi.fn();
+    const wait = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
+      .mockResolvedValueOnce(response(200)).mockRejectedValueOnce(new TypeError('fetch failed'));
+    await expect(publishRelease(options(), { request, run, wait })).rejects.toThrow(/Draft release creation failed \(POST .*after 1 attempt/);
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(wait).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
   it('uses the created draft ID without rediscovering it by tag or listing', async () => {
     const run = vi.fn();
     const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
@@ -113,7 +156,9 @@ describe('release publication', () => {
   });
   it.each([401, 403, 500])('does not create a release after HTTP %s', async status => {
     const run = vi.fn();
-    await expect(publishRelease(options(), { run, request: async () => response(status) })).rejects.toThrow(`HTTP ${status}`);
+    const request = vi.fn().mockResolvedValue(response(status));
+    await expect(publishRelease(options(), { run, request, wait: vi.fn() })).rejects.toThrow(`HTTP ${status}`);
+    expect(request).toHaveBeenCalledTimes(status === 500 ? 3 : 1);
     expect(run).not.toHaveBeenCalled();
   });
   it('does not repair an incomplete published release', async () => {
