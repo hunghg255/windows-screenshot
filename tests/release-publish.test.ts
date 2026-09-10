@@ -25,24 +25,68 @@ describe('release publication', () => {
 
   it('creates a draft, uploads assets, then publishes', async () => {
     const run = vi.fn();
-    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, { draft: true, assets }));
+    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
+      .mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, [{ id: 42, tag_name: `v${version}`, draft: true, assets: [] }]))
+      .mockResolvedValueOnce(response(200, { id: 42, draft: true, assets }));
     await publishRelease(options(), { request, run });
     expect(run.mock.calls.map(call => call[0][1])).toEqual(['create', 'upload', 'edit']);
     expect(run.mock.calls[0][0]).toContain('--draft');
     expect(run.mock.calls[0][0]).toContain('--verify-tag');
     expect(run.mock.calls[2][0]).toContain('--prerelease=false');
+    expect(request.mock.calls.map(call => call[0])).toEqual([
+      'https://api.github.com/repos/owner/repo/releases/tags/v0.1.0',
+      'https://api.github.com/repos/owner/repo/releases?per_page=100&page=1',
+      'https://api.github.com/repos/owner/repo/releases/tags/v0.1.0',
+      'https://api.github.com/repos/owner/repo/releases?per_page=100&page=1',
+      'https://api.github.com/repos/owner/repo/releases/42',
+    ]);
   });
   it('resumes a draft without creating another release', async () => {
     const run = vi.fn();
-    const request = vi.fn().mockResolvedValueOnce(response(200, { draft: true, assets: [] }))
+    const request = vi.fn().mockResolvedValueOnce(response(404))
+      .mockResolvedValueOnce(response(200, [{ id: 42, tag_name: `v${version}`, draft: true, assets: [] }]))
       .mockResolvedValueOnce(response(200, { draft: true, assets }));
     await publishRelease(options(), { request, run });
     expect(run.mock.calls.map(call => call[0][1])).toEqual(['upload', 'edit']);
+    expect(request.mock.calls[2][0]).toBe('https://api.github.com/repos/owner/repo/releases/42');
   });
   it('leaves a complete published release unchanged, even if rebuild sizes differ', async () => {
     const run = vi.fn();
     await publishRelease(options(), { run, request: async () => response(200, { draft: false, assets: assets.map(asset => ({ ...asset, size: 1 })) }) });
     expect(run).not.toHaveBeenCalled();
+  });
+  it('finds a draft beyond the first page of releases', async () => {
+    const run = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404))
+      .mockResolvedValueOnce(response(200, Array.from({ length: 100 }, (_, id) => ({ id, tag_name: `other-${id}` }))))
+      .mockResolvedValueOnce(response(200, [{ id: 142, tag_name: `v${version}`, draft: true, assets: [] }]))
+      .mockResolvedValueOnce(response(200, { draft: true, assets }));
+    await publishRelease(options(), { request, run });
+    expect(request.mock.calls[2][0]).toContain('page=2');
+    expect(request.mock.calls[3][0]).toBe('https://api.github.com/repos/owner/repo/releases/142');
+    expect(run.mock.calls.map(call => call[0][1])).toEqual(['upload', 'edit']);
+  });
+  it('does not create a release when draft listing fails', async () => {
+    const run = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(403));
+    await expect(publishRelease(options(), { request, run })).rejects.toThrow('HTTP 403');
+    expect(run).not.toHaveBeenCalled();
+  });
+  it('reports a missing draft after upload separately from incomplete assets', async () => {
+    const run = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404))
+      .mockResolvedValueOnce(response(200, [{ id: 42, tag_name: `v${version}`, draft: true, assets: [] }]))
+      .mockResolvedValueOnce(response(404));
+    await expect(publishRelease(options(), { request, run })).rejects.toThrow('not found after upload');
+    expect(run.mock.calls.map(call => call[0][1])).toEqual(['upload']);
+  });
+  it('does not publish when uploaded asset sizes differ', async () => {
+    const run = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce(response(404))
+      .mockResolvedValueOnce(response(200, [{ id: 42, tag_name: `v${version}`, draft: true, assets: [] }]))
+      .mockResolvedValueOnce(response(200, { draft: true, assets: assets.map(asset => ({ ...asset, size: 1 })) }));
+    await expect(publishRelease(options(), { request, run })).rejects.toThrow('sizes differ');
+    expect(run.mock.calls.map(call => call[0][1])).toEqual(['upload']);
   });
   it.each([401, 403, 500])('does not create a release after HTTP %s', async status => {
     const run = vi.fn();
@@ -78,7 +122,9 @@ describe('release publication', () => {
     writeFileSync(join(directory, 'SHA256SUMS.txt'), betaChecksum);
     const betaAssets = [{ ...assets[0], name: betaInstaller }, { ...assets[1], size: Buffer.byteLength(betaChecksum) }];
     const run = vi.fn();
-    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, { draft: true, assets: betaAssets }));
+    const request = vi.fn().mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, []))
+      .mockResolvedValueOnce(response(404)).mockResolvedValueOnce(response(200, [{ id: 43, tag_name: `v${betaVersion}`, draft: true, assets: [] }]))
+      .mockResolvedValueOnce(response(200, { id: 43, draft: true, assets: betaAssets }));
     await publishRelease({ ...options(), tag: `v${betaVersion}`, version: betaVersion }, { request, run });
     expect(run.mock.calls[0][0]).toContain('--latest=false');
     expect(run.mock.calls[2][0]).toContain('--latest=false');
