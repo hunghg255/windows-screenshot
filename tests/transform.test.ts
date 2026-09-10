@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect } from 'vitest';
-import { handles, identity, inversePoint, moveAnnotation, resizeAnnotation, resizedBox, transformBox } from '../src/editor/transform';
+import { frameBounds, handlePoint, handles, identity, inversePoint, moveAnnotation, resizeAnnotation, resizedBox, transformBox } from '../src/editor/transform';
 import { annotationBounds } from '../src/editor/render';
 import { hit } from '../src/editor/hit-test';
 import type { Drawing } from '../src/editor/model';
@@ -37,6 +37,54 @@ describe('annotation transforms', () => {
     }
     const clipped = { x: -50, y: 20, right: 200, bottom: 100 };
     expect((moveAnnotation(shape, clipped, { x: 0, y: 0 }, image) as Drawing).transform).toEqual(identity);
+  });
+});
+
+describe('fixed circle and freehand stroke resizing', () => {
+  const circle: Drawing = { ...shape, type: 'circle', end: { x: 300, y: 300 }, width: 8 };
+  const line: Drawing = { id: 'l', type: 'freehand', width: 8, color: '#f00', points: [{ x: 100, y: 100 }, { x: 200, y: 150 }, { x: 300, y: 300 }] };
+  it.each(handles)('%s preserves the opposite ink anchor and fixed padding', handle => {
+    for (const a of [circle, line]) {
+      const before = JSON.stringify(a), b = frameBounds(a), anchor = handlePoint(b, handle, true);
+      const updated = resizeAnnotation(a, b, handle, { x: 40, y: 30 }, false, image) as Drawing;
+      const next = frameBounds(updated), fixed = handlePoint(next, handle, true);
+      expect(fixed.x).toBeCloseTo(anchor.x); expect(fixed.y).toBeCloseTo(anchor.y);
+      expect(updated.width).toBe(8); expect(JSON.stringify(a)).toBe(before);
+      expect(next.right - next.x).toBeCloseTo(200 * updated.transform!.sx + 8);
+      expect(next.bottom - next.y).toBeCloseTo(200 * updated.transform!.sy + 8);
+    }
+  });
+  it('locks geometry ratio, clamps ink to image, and has no repeated resize drift', () => {
+    for (const a of [circle, line]) {
+      const locked = resizeAnnotation(a, frameBounds(a), 'se', { x: 100, y: 20 }, true, image) as Drawing;
+      expect(locked.transform!.sx).toBeCloseTo(locked.transform!.sy);
+      const clamped = resizeAnnotation(a, frameBounds(a), 'se', { x: 10000, y: 10000 }, false, image);
+      expect(frameBounds(clamped).right).toBeCloseTo(image.width); expect(frameBounds(clamped).bottom).toBeCloseTo(image.height);
+      let current: Drawing = a;
+      for (let i = 0; i < 20; i++) {
+        current = resizeAnnotation(current, frameBounds(current), 'se', { x: 80, y: 40 }, false, image) as Drawing;
+        current = resizeAnnotation(current, frameBounds(current), 'se', { x: -80, y: -40 }, false, image) as Drawing;
+      }
+      for (const key of ['x', 'y', 'right', 'bottom'] as const) expect(frameBounds(current)[key]).toBeCloseTo(frameBounds(a)[key]);
+      const tiny = frameBounds(resizeAnnotation(a, frameBounds(a), 'se', { x: -10000, y: -10000 }, false, image));
+      expect(tiny.right - tiny.x).toBeCloseTo(10); expect(tiny.bottom - tiny.y).toBeCloseTo(10);
+    }
+  });
+  it('keeps degenerate freehand geometry and dot diameter without growing phantom axes', () => {
+    for (const points of [[{ x: 100, y: 100 }], [{ x: 100, y: 100 }, { x: 100, y: 100 }], [{ x: 100, y: 100 }, { x: 200, y: 100 }], [{ x: 100, y: 100 }, { x: 100, y: 200 }]]) {
+      const a = { ...line, points };
+      for (const handle of handles) {
+        const updated = resizeAnnotation(a, frameBounds(a), handle, { x: 40, y: 30 }, false, image) as typeof a;
+        expect(updated.points).toBe(points); expect(Object.values(updated.transform!).every(Number.isFinite)).toBe(true);
+        const b = frameBounds(updated);
+        if (points.every(p => p.x === points[0].x)) expect(b.right - b.x).toBeCloseTo(8);
+        if (points.every(p => p.y === points[0].y)) expect(b.bottom - b.y).toBeCloseTo(8);
+      }
+    }
+    const horizontal = { ...line, points: [{ x: 100, y: 100 }, { x: 300, y: 100 }] };
+    const shrunk = resizeAnnotation(horizontal, frameBounds(horizontal), 'se', { x: -100, y: 80 }, true, image);
+    expect(frameBounds(shrunk).right - frameBounds(shrunk).x).toBeCloseTo(108);
+    expect(frameBounds(shrunk).bottom - frameBounds(shrunk).y).toBeCloseTo(8);
   });
 });
 

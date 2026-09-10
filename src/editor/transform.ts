@@ -26,6 +26,14 @@ function pointBounds(points: Point[]): Box {
   return { x, y, right, bottom };
 }
 const paddedBox = (b: Box, padding: number): Box => ({ x: b.x - padding, y: b.y - padding, right: b.right + padding, bottom: b.bottom + padding });
+export function ellipseGeometry(a: Extract<Annotation, { start: Point }>) {
+  const t = a.transform ?? identity, radius = Math.abs(a.end.x - a.start.x) / 2;
+  return { center: transformPoint({ x: (a.start.x + a.end.x) / 2, y: (a.start.y + a.end.y) / 2 }, t), rx: radius * t.sx, ry: radius * t.sy };
+}
+export function arrowGeometry(a: Extract<Annotation, { start: Point }>) {
+  const t = a.transform ?? identity, start = transformPoint(a.start, t), end = transformPoint(a.end, t);
+  return { start, end, head: arrowHead(start, end, a.width) };
+}
 
 // Unrotated ink bounds: scale is already applied, UI padding is excluded.
 export function frameBounds(a: Annotation): Box {
@@ -38,7 +46,19 @@ export function frameBounds(a: Annotation): Box {
     const t = a.transform ?? identity;
     return paddedBox(pointBounds([transformPoint(a.start, t), transformPoint(a.end, t)]), a.width / 2);
   }
-  const points = 'points' in a ? a.points : a.type === 'arrow' ? [a.start, a.end, ...arrowHead(a.start, a.end, a.width)] : [a.start, a.end];
+  if (a.type === 'circle') {
+    const { center, rx, ry } = ellipseGeometry(a);
+    return paddedBox({ x: center.x - rx, y: center.y - ry, right: center.x + rx, bottom: center.y + ry }, a.width / 2);
+  }
+  if (a.type === 'freehand') {
+    const b = pointBounds(a.points.length ? a.points : [{ x: 0, y: 0 }]);
+    return paddedBox(transformBox(b, a.transform ?? identity), a.width / 2);
+  }
+  if (a.type === 'arrow') {
+    const { start, end, head } = arrowGeometry(a);
+    return paddedBox(pointBounds([start, end, ...head]), a.width / 2);
+  }
+  const points = 'points' in a ? a.points : [a.start, a.end];
   const b = paddedBox(pointBounds(points.length ? points : [{ x: 0, y: 0 }]), a.width / 2);
   return a.transform ? transformBox(b, a.transform) : b;
 }
@@ -66,6 +86,11 @@ export function preserveGlyphOrigin<T extends GlyphAnnotation>(before: T, after:
   const newOrigin = rotatePoint(after.position, boxCenter(frameBounds(after)), angle);
   return translated(after, oldOrigin.x - newOrigin.x, oldOrigin.y - newOrigin.y);
 }
+export function preserveArrowTip<T extends Extract<Annotation, { start: Point }>>(before: T, after: T): T {
+  const oldTip = rotatePoint(arrowGeometry(before).end, boxCenter(frameBounds(before)), rotationOf(before));
+  const newTip = rotatePoint(arrowGeometry(after).end, boxCenter(frameBounds(after)), rotationOf(after));
+  return translated(after, oldTip.x - newTip.x, oldTip.y - newTip.y);
+}
 export function moveAnnotation(a: Annotation, b: Box, delta: Point, image: { width: number; height: number }) {
   const insideX = b.x >= 0 && b.right <= image.width, insideY = b.y >= 0 && b.bottom <= image.height;
   return translated(a, clamp(delta.x, insideX ? -b.x : 2 - b.right, insideX ? image.width - b.right : image.width - 2 - b.x), clamp(delta.y, insideY ? -b.y : 2 - b.bottom, insideY ? image.height - b.bottom : image.height - 2 - b.y));
@@ -87,7 +112,8 @@ export function resizedBox(b: Box, handle: Handle, delta: Point, uniform: boolea
 }
 function resizeLocal(a: Annotation, b: Box, handle: Handle, delta: Point, aspect: boolean): Annotation {
   const glyph = a.type === 'text' || a.type === 'emoji', uniform = glyph || (aspect && handle.length === 2);
-  const next = a.type === 'rectangle'
+  const fixedStroke = a.type === 'rectangle' || a.type === 'circle' || a.type === 'freehand';
+  const next = fixedStroke
     ? paddedBox(resizedBox(paddedBox(b, -a.width / 2), handle, delta, uniform), a.width / 2)
     : resizedBox(b, handle, delta, uniform);
   let sx = (next.right - next.x) / (b.right - b.x), sy = (next.bottom - next.y) / (b.bottom - b.y);
@@ -99,13 +125,30 @@ function resizeLocal(a: Annotation, b: Box, handle: Handle, delta: Point, aspect
   } else {
     const t = a.transform ?? identity;
     updated = a;
-    if (a.type === 'rectangle') {
+    if (a.type === 'arrow') {
+      // Resize the shaft, then rebuild an undistorted head at the current brush size.
+      const { start, end } = arrowGeometry(a), shaft = pointBounds([start, end]);
+      const target = resizedBox(shaft, handle, delta, uniform);
+      const w = shaft.right - shaft.x, h = shaft.bottom - shaft.y;
+      sx = w > 1e-8 ? (target.right - target.x) / w : 1;
+      sy = h > 1e-8 ? (target.bottom - target.y) / h : 1;
+      if (uniform && (w <= 1e-8 || h <= 1e-8)) {
+        if (w > 1e-8) sx = Math.max(2 / w, 1 + (handle.includes('w') ? -delta.x : delta.x) / w);
+        if (h > 1e-8) sy = Math.max(2 / h, 1 + (handle.includes('n') ? -delta.y : delta.y) / h);
+      }
+    }
+    if (fixedStroke) {
       // Stroke stays in image pixels, so only the centerline dimensions scale.
       const oldWidth = b.right - b.x - a.width, oldHeight = b.bottom - b.y - a.width;
       const newWidth = next.right - next.x - a.width, newHeight = next.bottom - next.y - a.width;
       sx = oldWidth > 1e-8 ? newWidth / oldWidth : 1;
       sy = oldHeight > 1e-8 ? newHeight / oldHeight : 1;
-      updated = { ...a, end: { x: oldWidth > 1e-8 ? a.end.x : a.start.x + newWidth / t.sx, y: oldHeight > 1e-8 ? a.end.y : a.start.y + newHeight / t.sy } };
+      if (a.type === 'freehand' && uniform && (oldWidth <= 1e-8 || oldHeight <= 1e-8)) {
+        // A zero-length axis cannot constrain the aspect ratio of a line or dot.
+        if (oldWidth > 1e-8) sx = Math.max(2 / oldWidth, 1 + (handle.includes('w') ? -delta.x : delta.x) / oldWidth);
+        if (oldHeight > 1e-8) sy = Math.max(2 / oldHeight, 1 + (handle.includes('n') ? -delta.y : delta.y) / oldHeight);
+      }
+      if (a.type === 'rectangle') updated = { ...a, end: { x: oldWidth > 1e-8 ? a.end.x : a.start.x + newWidth / t.sx, y: oldHeight > 1e-8 ? a.end.y : a.start.y + newHeight / t.sy } };
     }
     updated = { ...updated, transform: { ...t, sx: t.sx * sx, sy: t.sy * sy } };
   }

@@ -187,6 +187,31 @@ Artifacts:
 
 Remaining manual acceptance: Windows 11; physical DPI 125/150/200%, mixed DPI and 4K; native OS IME entry; native Save dialog (folder/overwrite/cancel/errors), Paint paste; real external pointer interruptions and exhaustive edge/zoom cases; interactive installer install/uninstall. Save integration substitutes the native chooser. Programmatic Unicode/cancellation checks and synthetic fixtures do not establish those manual results. Historical manual items stay open.
 
+## Fixed arrow stroke and head resize — 2026-09-10
+
+Follow-up to Task 40–42: arrows now transform shaft endpoints before stroking, and regenerate symmetric arrowheads from the destination direction and selected image-pixel Size. The existing short-shaft limit (head length at most 60% of shaft length) remains. Bounds/hit tests use that same head geometry; resize scales shaft geometry and preserves the opposite rotated ink anchor. Horizontal/vertical shafts stay finite. Selected Size updates width/head geometry while preserving the rotated shaft position. Blur mask scaling is unchanged.
+
+- Build/typecheck and all 123 unit tests passed. Eleven new arrow tests cover eight anchors at 0/45/90 degrees, horizontal/vertical/reversed directions, head symmetry and length, fixed hit tolerance on shaft/head, short arrows, Shift shrink, rotated clamp and stable shaft position when changing Size.
+- Expanded stroke E2E passed: arrow destination paths at four scale pairs and 0/45/90 degrees, long/short/horizontal/vertical/diagonal shafts, independent exact-pixel reference heads, 8 px shaft measurements, repeated resize/move/width/restore/delete, incremental/fresh/export equality and real UI Size/Copy/Save pixel equality. Circle/freehand remain covered in the same test.
+- Initial related E2E run: 6/7 passed; the existing all-drawing move test observed a zero move instead of 35 px. Both transform tests passed on the isolated rerun without code changes. All seven distinct tests passed across those runs; the cause of the initial desktop interaction failure is not established. Rotation UI, glyph editing and rectangle pixel regressions passed.
+- Visually reviewed synthetic Arrow.png at `test-results/arrow-stroke-validation/stroke-resize-arrow-circle-aa136-draw-and-matching-Copy-Save/Arrow.png`: constant shaft width, symmetric head, aligned frame and Size 12. The new stroke test retains no desktop trace.
+
+Task 43 code and automated/visual validation complete; needs review for the existing native Save/Paint, physical DPI/mixed DPI/4K and broader manual edge/zoom checks. No installer, version bump, commit or publication.
+
+## Fixed circle/freehand stroke resize — 2026-09-10
+
+Task 40–41 implemented; Task 42 automated and visual checks passed, needs manual/hardware review. Circle/ellipse and freehand now transform geometry before stroking at the selected image-pixel width. Bounds, resize anchors, hit testing and selected Size updates use the same policy. Freehand dots and repeated points stay round; zero-length axes do not create phantom geometry or prevent Shift-shrinking the nonzero axis. Arrow and blur stroke policy is unchanged.
+
+Validation:
+
+- `pnpm.cmd build` (including typecheck) and all 112 unit tests passed. Coverage includes eight fixed anchors, clamp/minimum, Shift, repeated resize, immutable points, degenerate strokes, selected-width changes and ellipse distance against an independently sampled boundary (including flat ellipses).
+- New `stroke-resize.spec.ts` passed: four nonuniform/uniform scale pairs, independently authored destination ellipse/polyline/dot paths with exact pixel comparisons, 8 px ellipse stroke measurements within 1 px, repeated grow/shrink, move, width changes, restore/delete and incremental/fresh/export equality. A 10,000-point freehand render loop also completed. Real UI draw/select/east resize/Size/Copy/Save passed for circle and freehand; clipboard and saved PNG pixels equal the preview. Native Save chooser was substituted.
+- All six related regression E2E tests passed: image import, Canvas blur/layers/export, rectangle stroke pixel measurements, rotation rendering, eight-handle drawing transforms/cancellation/window resize, and glyph move/resize/clipboard. Existing synthetic 4K Canvas render/readback p95: 8.80 ms (33 ms gate). This is not physical 4K capture latency.
+- The first pixel runs exposed two incremental/fresh differences on wider freehand diagonal strokes and round joins (maximum channel difference 38). Adding conservative redraw padding around freehand joins resolved both; final pixel equality passed. The initial runners stalled while targeting the shared output folder; separate output folders allowed the runs to complete.
+- Visually reviewed synthetic `Circle.png` and `Freehand.png` in `test-results/stroke-resize-validation-3/stroke-resize-circle-and-f-90289-draw-and-matching-Copy-Save/`: even ellipse outline, constant freehand stroke, aligned handles and Size = 12. The UI was fit to a 1920×1080 image. New test disables retained traces to avoid recording the temporary desktop capture before the synthetic replacement.
+
+Remaining: manual native Save/overwrite/Paint paste, physical DPI 125/150/200% and mixed DPI, physical 4K, broader manual zoom/edge interactions. No installer, version bump, commit or publication for this change. Existing manual gaps stay open.
+
 ## Image insertion — 2026-09-10
 
 Implemented Insert image for PNG/JPG/JPEG/SVG/WebP, selection, move, eight-handle resize, 360-degree rotation, W/H and aspect lock, delete, Copy/Save. Imports use a session-validated native chooser bridge; Settings cannot invoke the operation. File byte/header checks precede decoding; SVG is parsed and restricted in the sandbox before image loading.

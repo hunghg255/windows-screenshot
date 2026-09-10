@@ -931,3 +931,95 @@ Status: implemented, needs manual review. Giữ nguyên Task 01–33 và bằng 
 ## Checkpoint hoàn tất phần code
 - [x] Code, build và automated validation hoàn tất; giới hạn/manual còn thiếu được ghi rõ.
 - [ ] Nghiệm thu manual/hardware còn lại; chưa tạo installer, commit hoặc phát hành cho thay đổi này.
+## Giai đoạn bổ sung: Stroke circle/freehand cố định (2026-09-10)
+
+**Status: implemented, needs manual review.** Task 40–42 mở rộng Task 28, thay thế quy tắc scale stroke cũ cho circle/freehand. Giữ nguyên checkbox/evidence Task 01–39; checkpoint hoàn tất phần code phía trên chỉ áp dụng các task cũ.
+
+## Task 40: Giữ độ dày viền circle/ellipse khi resize
+
+**Status: done.**
+
+**Description:** Vẽ ellipse từ geometry sau transform với width cố định; đồng bộ bounds, neo resize và hit-test theo pixel ảnh.
+
+**Acceptance criteria:**
+- [x] Circle/ellipse giữ width khi kéo ngang/dọc/đều; Shift giữ tỷ lệ; đổi width sau resize đúng.
+- [x] Tám neo, clamp, min size và bounds đúng; snapshot bất biến, không drift qua nhiều lần resize.
+- [x] Hit-test đúng gần bốn cực/vùng chéo của ellipse dẹt, không chọn lòng rỗng xa viền; bán kính gần 0 không gây lỗi.
+
+**Verification:**
+- [x] pnpm.cmd test -- tests/transform.test.ts tests/hit-test.test.ts; thêm regression scale không đều và khoảng cách ellipse với mẫu độc lập.
+- [x] pnpm.cmd typecheck; pnpm.cmd build.
+
+**Dependencies:** Task 28 đã triển khai.
+**Files likely touched:** src/editor/render.ts, src/editor/transform.ts, src/editor/hit-test.ts, tests/transform.test.ts, tests/hit-test.test.ts.
+**Estimated scope:** M (5 files).
+
+## Task 41: Giữ độ dày freehand và đầu bút tròn khi resize
+
+**Status: done.**
+
+**Description:** Transform các điểm trước khi stroke; đồng bộ bounds/resize/hit-test và phân biệt freehand với blurStroke.
+
+**Acceptance criteria:**
+- [x] Nét ngang/dọc/chéo giữ width, cap/join tròn; nét một điểm giữ chấm tròn đường kính width; điểm trùng không gây NaN/mất nét.
+- [x] Bounds, click chọn, tám neo, Shift, clamp và đổi width đồng bộ; khung trục suy biến hữu hạn, không bịa geometry hoặc mutate/drift.
+- [x] Rectangle, arrow và blur giữ hành vi hiện tại; không thêm rotation cho circle/freehand.
+
+**Verification:**
+- [x] pnpm.cmd test -- tests/transform.test.ts tests/hit-test.test.ts; thêm regression ngang/dọc/một điểm/điểm trùng và scale không đều.
+- [x] pnpm.cmd typecheck; pnpm.cmd build.
+
+**Dependencies:** 40 (cùng helper bounds/resize/hit-test).
+**Files likely touched:** src/editor/render.ts, src/editor/transform.ts, src/editor/hit-test.ts, tests/transform.test.ts, tests/hit-test.test.ts.
+**Estimated scope:** M (5 files).
+
+## Checkpoint: Geometry và nét cố định
+- [x] Task 40–41 đạt unit/typecheck/build; circle/freehand cùng quy ước stroke với rectangle.
+- [x] Neo và nét suy biến được kiểm chứng trước nghiệm thu pixel/tương tác.
+
+## Task 42: Nghiệm thu pixel, resize và export circle/freehand
+
+**Status: needs review (automated và review ảnh đạt; còn manual/hardware).**
+
+**Description:** Thêm pixel regression độc lập, E2E tương tác và cập nhật QA theo kết quả thực tế.
+
+**Acceptance criteria:**
+- [x] Nét 8 px sai lệch tối đa 1 px ở mẫu không chồng nét sau scale (2,1), (1,2), (2,2), (0.5,0.75) và resize lặp lại; ellipse đo theo pháp tuyến; freehand ngang/dọc/chéo; caps/joins/chấm so path độc lập.
+- [x] Vẽ/chọn/resize/move/đổi width/cancel/delete/Copy/Save đúng; preview/export và incremental/fresh render khớp, không sót pixel hoặc handles trong ảnh xuất.
+- [x] Rectangle/rotation, arrow/blur/image không hồi quy; QA ghi smoke zoom, freehand nhiều điểm và giới hạn DPI/native dialog còn thiếu.
+
+**Verification:**
+- [x] pnpm.cmd typecheck; pnpm.cmd test; pnpm.cmd build.
+- [x] pnpm.cmd exec playwright test tests/e2e/stroke-resize.spec.ts tests/e2e/transform.spec.ts tests/e2e/rotation-render.spec.ts tests/e2e/render.spec.ts tests/e2e/image-import.spec.ts (stroke-resize.spec.ts là file mới dự kiến).
+- [x] Review ảnh tổng hợp và resize lặp lại tự động đạt; kết quả/giới hạn ở docs/windows-qa.md.
+- [ ] Smoke zoom/edge thủ công rộng hơn, native Save/Paint, DPI vật lý/mixed DPI và physical 4K.
+
+**Dependencies:** 40–41.
+**Files likely touched:** tests/e2e/stroke-resize.spec.ts, tests/e2e/transform.spec.ts, docs/windows-qa.md, README.md.
+**Estimated scope:** M (4 files, cộng cập nhật trạng thái plan).
+
+## Checkpoint: Hoàn tất stroke circle/freehand
+- [x] Task 40–42 đạt kiểm thử tự động và review ảnh; evidence cập nhật; mục manual/hardware chưa thử vẫn để mở.
+
+**Evidence:** pnpm.cmd build/typecheck; pnpm.cmd test: 112 passed. Electron E2E gọi trực tiếp node node_modules/@playwright/test/cli.js với output riêng: stroke-resize.spec.ts 1 passed; transform.spec.ts, rotation-render.spec.ts, render.spec.ts, image-import.spec.ts tổng 6 passed. Vùng redraw freehand được tăng padding sau pixel regression. Bổ sung src/stores/editor.ts và tests/store.test.ts cho Size của circle/freehand. Nghiệm thu chưa thực hiện vẫn để mở, xem docs/windows-qa.md.
+
+## Task 43: Giữ độ dày mũi tên và đầu nhọn khi resize
+
+**Status: needs review — code, automated và review ảnh đạt; còn manual/hardware.**
+**Source:** Yêu cầu tiếp theo của người dùng kiểm tra và sửa mũi tên; thay thế ngoại lệ scale arrow ở Task 40–42.
+**Description:** Transform shaft trước stroke width cố định, dựng lại đầu nhọn cân đối; đồng bộ bounds/hit/resize/Size sau xoay.
+
+**Acceptance criteria:**
+- [x] Resize ngang/dọc/lệch tỷ lệ/xoay giữ width; đầu nhọn theo Size, đối xứng và fit shaft ngắn.
+- [x] Tám neo xoay, clamp, min size, trục suy biến và hit thân/đầu đúng; Size giữ world position của shaft sau xoay.
+- [x] Pixel tham chiếu độc lập, redraw/restore/delete và Copy/Save khớp; rectangle/circle/freehand/rotation không hồi quy ở các test liên quan.
+
+**Verification:**
+- [x] pnpm.cmd build/typecheck và pnpm.cmd test: 123 unit tests đạt, gồm 11 arrow tests.
+- [x] stroke-resize, rotation-render, rotation, transform: 6/7 đạt lần đầu; cả hai transform tests đạt lần chạy riêng lại không sửa code (7 test khác nhau đã đạt). Lần move delta 0 chưa xác định nguyên nhân; ghi tại docs/windows-qa.md.
+- [x] Review ảnh Arrow.png nền tổng hợp; update README/QA/plan/log.
+- [ ] Native Save/Paint, physical DPI/mixed DPI/4K và manual zoom/edge rộng hơn.
+
+**Dependencies:** Task 28–33 rotation và Task 40–42 fixed stroke đã triển khai.
+**Files:** src/editor/render.ts, transform.ts, hit-test.ts, src/stores/editor.ts, tests/arrow-resize.test.ts, tests/e2e/stroke-resize.spec.ts; README/QA/log.
+**Scope thực tế:** geometry/render + Size + automated/visual QA; không thêm UI hoặc thư viện.

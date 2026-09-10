@@ -318,3 +318,50 @@ Rủi ro chính: bitmap lớn tăng RAM; decode bất đồng bộ trả về ph
 Task 34–38 đã có code; Task 39 hoàn tất kiểm thử tự động và review ảnh UI tổng hợp, còn manual. Build/typecheck và 95 unit tests đạt. Toàn bộ 14 test E2E cũ đạt qua full run và focused rerun sau cập nhật whitelist API; test chèn ảnh mới đạt, gồm năm đuôi file, WebP/APNG khung đầu, EXIF JPEG, resize sau xoay, W/H, Copy pixel equality, Save integration, cancel và giải phóng asset. Evidence và giới hạn: docs/windows-qa.md.
 
 Điều chỉnh thiết kế theo kiểm chứng: JPEG dùng HTML image decoder để áp EXIF; PNG/WebP dùng ImageDecoder frame 0. Preview/export dùng chung composition canvas để giữ pixel nhất quán. SVG raster cache theo size, cập nhật trong lịch render requestAnimationFrame, không decode XML lại trên mỗi thao tác. Tập con SVG hỗ trợ được liệt kê trong README; filter, stylesheet và embedded image bị từ chối. Ngân sách ảnh 128 MiB không bao gồm toàn bộ RAM app. Native Open/Save chooser và DPI khác 100% chưa được nghiệm thu thủ công; chưa tạo installer mới.
+## Bổ sung: Giữ độ dày nét circle/freehand khi resize (2026-09-10)
+
+**Status: implemented, needs manual review.** Task 40–41 done; Task 42 đạt kiểm thử tự động và review ảnh, còn nghiệm thu thủ công/phần cứng. Task 40–42 mở rộng cách sửa rectangle của Task 28. Giữ nguyên evidence/checkbox Task 01–39. Phần này thay thế quy ước scale cả stroke cho circle/freehand ở Task 23–27 và ngoại lệ giữ hành vi cũ của chúng ở Task 28–33.
+
+### Kết quả rà soát
+
+- src/editor/render.ts: rectangle transform tọa độ trước rồi stroke với a.width; circle/freehand vẫn qua ctx.scale trước khi stroke. Resize đều làm nét to/nhỏ; resize lệch trục làm nét và đầu bút bị dẹt. Đây là bằng chứng từ code, chưa phải đo pixel desktop trong lần lập plan này.
+- src/editor/transform.ts: frameBounds cộng width/2 trước scale cho circle/freehand; resizeLocal chỉ tách stroke khỏi geometry cho rectangle. Chỉ sửa paint sẽ để lại lỗi khung, neo kéo và vùng redraw.
+- src/editor/hit-test.ts: circle/freehand dùng inverse scale với tolerance chia scale nhỏ nhất; cần đồng bộ với stroke cố định trong tọa độ ảnh, nhất là ellipse dẹt.
+
+### Quy tắc và thiết kế
+
+1. Resize chỉ đổi geometry, giữ a.width theo pixel screenshot gốc như rectangle: nét 8 px vẫn 8 px khi kéo ngang/dọc/đều hoặc thu nhỏ. Zoom giao diện vẫn phóng toàn bộ ảnh; người dùng vẫn thay width bằng điều khiển độ dày.
+2. Circle có thể thành ellipse khi kéo lệch tỷ lệ; Shift + kéo góc giữ tỷ lệ hiện tại. Tính tâm/bán kính ellipse sau transform rồi stroke width cố định, không scale context chứa nét hoặc chia lineWidth theo tỷ lệ trung bình. Tôn trọng geometry circle hiện tại: bán kính gốc theo chênh lệch X, tâm theo start/end.
+3. Freehand transform từng điểm rồi stroke polyline một lần với round cap/join và width cố định. Một điểm vẫn là chấm tròn đường kính width; điểm trùng không gây NaN/mất nét. Giữ dữ liệu local và transform, không mutate điểm gốc hoặc nhân dồn geometry qua mỗi lần kéo.
+4. Đồng bộ frameBounds, annotationBounds, resizeLocal: geometry sau transform cộng width/2 trong pixel ảnh; padding khử răng cưa/UI tách riêng. Giữ tám neo đối diện, Shift, clamp biên, không flip và minimum 2 px cho trục geometry không suy biến. Freehand ngang/dọc/một điểm có khung tương tác hữu hạn; trục suy biến không chia 0 hoặc bịa thêm geometry. Chấm một điểm giữ đường kính, chỉ thay vị trí theo neo nếu có.
+5. Hit-test freehand đo khoảng cách tới đoạn/điểm sau transform. Ellipse đo khoảng cách Euclidean tới biên trong pixel ảnh rồi so width/2 + tolerance theo zoom; dùng thuật toán ổn định hoặc xấp xỉ sai số tối đa 0.25 px ảnh được kiểm chứng, có xử lý bán kính gần 0. Không dùng khoảng cách circle inverse-scale với một hệ số bù chung. Click lòng rỗng xa viền không chọn.
+6. Dirty region chứa đủ nét cũ/mới sau resize/move/đổi width/cancel/delete; preview và Copy/Save cùng pipeline. Giữ hành vi arrow/blurStroke; không áp nhầm freehand policy cho blur chỉ vì cùng có points. Không thêm rotation cho circle/freehand.
+
+### Thứ tự và kiểm chứng
+
+Task 40 circle/ellipse → Task 41 freehand → Task 42 pixel/E2E/export. Checklist trong todo.md.
+
+- Pixel fixture tổng hợp với scale (2,1), (1,2), (2,2), (0.5,0.75), kéo lớn/nhỏ lặp lại. Nét 8 px sai lệch tối đa 1 px khử răng cưa tại mẫu không tự chồng/góc nối. Ellipse đo bốn cực và mẫu chéo theo pháp tuyến; freehand đo ngang/dọc/chéo. Cap/join/chấm so path tham chiếu độc lập, không chỉ so preview/export vì cả hai có thể cùng sai.
+- Unit kiểm tra bounds đủ width/2, tám neo, Shift, clamp, snapshot bất biến, không drift, nét ngang/dọc/một điểm/điểm trùng và hit trong/ngoài ngưỡng ở ellipse dẹt. Đổi width sau resize đồng bộ hình/bounds/click chọn.
+- E2E vẽ → chọn → resize → move → đổi width → Copy/Save; cancel/delete không sót pixel; incremental render khớp fresh render. Regression rectangle/rotation, arrow/blur/image; smoke zoom và freehand nhiều điểm để phát hiện hồi quy tốc độ kéo.
+- Chạy pnpm.cmd typecheck, pnpm.cmd test, pnpm.cmd build và E2E liên quan khi triển khai. QA chỉ dùng ảnh tổng hợp, ghi rõ native Save dialog/DPI chưa thử.
+- Rủi ro: khoảng cách ellipse dẹt sai, nhảy neo khi bỏ stroke khỏi resize, mất nét suy biến, redraw thiếu padding. Kiểm chứng geometry/pixel trước nghiệm thu tương tác. Phần trên là thiết kế được duyệt; kết quả triển khai ghi bên dưới.
+
+### Kết quả triển khai stroke circle/freehand (2026-09-10)
+
+- Task 40–41 done: paint geometry trước stroke cố định; bounds/resize/hit-test đồng bộ. Ellipse distance bisection có xử lý trục/bán kính suy biến; freehand giữ round cap/join/dot, điểm gốc bất biến, Shift thu nhỏ nét một chiều đúng.
+- Bổ sung ngoài danh sách file dự kiến nhưng thuộc tiêu chí đổi width: src/stores/editor.ts và tests/store.test.ts để chọn circle/freehand nạp đúng Size và cập nhật width của đối tượng đã chọn.
+- Task 42 automated/visual đạt: build/typecheck, 112 unit tests, 1 E2E mới + 6 E2E hồi quy. Pixel tham chiếu độc lập khớp; nét ellipse 8 px trong sai số 1 px; Copy/Save đúng pixel; tám handles/cancel/window resize qua test transform hiện có. 4K Canvas p95 8.80 ms; freehand 10.000 điểm được chạy trong test mới.
+- Hai sai lệch incremental/fresh ở nét freehand dày đã được tái hiện và sửa bằng padding redraw bảo thủ quanh round joins. Ảnh QA nền tổng hợp Circle.png/Freehand.png đã được xem; evidence và đường dẫn ở docs/windows-qa.md.
+- Needs review: native Save/Paint, DPI vật lý 125/150/200% và mixed DPI, physical 4K, nghiệm thu zoom/edge thủ công rộng hơn. Giữ version 0.3.5; không tạo installer, commit/tag hoặc publish.
+
+## Bổ sung: Mũi tên giữ nét và đầu nhọn khi resize (2026-09-10)
+
+**Status: implemented, needs manual review.** Nguồn: người dùng yêu cầu “check lại cả mũi tên nữa nó cũng đang bị” sau Task 40–42. Task 43 thay thế ngoại lệ giữ scale stroke cũ cho arrow; các trạng thái/evidence cũ giữ nguyên.
+
+- Rà soát xác nhận arrow còn qua ctx.scale trước stroke; đầu nhọn cũng bị kéo lệch. Đã transform hai đầu shaft trước, stroke với width cố định và dựng lại đầu nhọn cân đối theo hướng mới và Size. Giữ giới hạn đầu nhọn tối đa 60% chiều dài shaft cho mũi tên rất ngắn.
+- arrowGeometry dùng chung cho paint/bounds/hit-test; resize scale shaft với min/clamp, giữ neo đối diện sau xoay. Trục ngang/dọc không sinh geometry giả; Shift thu nhỏ trục còn chiều dài. Tăng padding redraw cho nét arrow để tránh clip sát làm khác rasterization.
+- Zustand Size nạp/cập nhật arrow được chọn. preserveArrowTip giữ toàn bộ shaft ở vị trí world cũ khi đổi width sau xoay. Không đổi blur mask policy.
+- Kiểm chứng: build/typecheck, 123 unit tests; 11 test arrow mới. E2E stroke mở rộng có path tham chiếu độc lập, nét 8 px, đầu nhọn sau scale/xoay, short arrows, incremental/fresh/export, UI Size và Copy/Save đúng pixel. Ảnh Arrow.png nền tổng hợp đã xem.
+- Bộ liên quan lần đầu 6/7 đạt; test move mọi drawing nhận delta 0 thay vì 35 px. Chạy riêng lại cả hai test transform đạt, không sửa code; chưa xác định nguyên nhân lần tương tác thất bại. Bảy test E2E khác nhau đều đạt qua các lần chạy. Chi tiết ở docs/windows-qa.md.
+- Còn manual native Save/Paint, physical DPI/mixed DPI/4K và zoom/edge rộng hơn. Giữ version 0.3.5; chưa tạo installer/commit/tag/publish.
