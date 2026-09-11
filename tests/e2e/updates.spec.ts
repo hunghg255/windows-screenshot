@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 async function launch() {
   const env: Record<string, string> = { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), SCREENSHOT_TEST_USER_DATA: await mkdtemp(join(tmpdir(), 'screenshot-updates-')) }; delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ executablePath: process.env.SCREENSHOT_EXECUTABLE, args: process.env.SCREENSHOT_EXECUTABLE ? [] : [resolve('.')], env });
-  const settings = await app.firstWindow(); await expect(settings.getByLabel('Capture display')).toBeEnabled();
+  const settings = await app.firstWindow(); await expect(settings.getByRole('button', { name: 'Full screen', exact: true })).toBeEnabled();
   return { app, settings };
 }
 async function capture(app: ElectronApplication, settings: Page, mode = 'Full screen') {
@@ -15,30 +15,17 @@ async function capture(app: ElectronApplication, settings: Page, mode = 'Full sc
 async function close(editor: Page) {
   const closed = editor.waitForEvent('close'); await editor.getByRole('button', { name: 'Cancel', exact: true }).click().catch(error => { if (!editor.isClosed()) throw error; }); await closed;
 }
-test('explicit target captures both physical displays independent of Settings location', async () => {
+test('home captures the complete desktop without a display chooser', async () => {
   const { app, settings } = await launch();
   try {
-    const list = await settings.evaluate(async () => { const r = await window.screenshot.displays(); if (!r.ok) throw new Error(r.error); return r.value.displays; });
-    test.skip(list.length < 2, 'Requires two physical displays.');
-    for (const target of list.slice(0, 2)) {
-      const other = list.find(d => d.id !== target.id)!;
-      await app.evaluate(({ BrowserWindow }, b) => { const win = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('#settings'))!; win.setPosition(b.x + 40, b.y + 40); win.show(); }, other.bounds);
-      await settings.getByLabel('Capture display').selectOption(String(target.id));
-      const editor = await capture(app, settings);
-      const data = await editor.evaluate(async () => { const r = await window.screenshot.current(); return r.ok && r.value ? { id: r.value.displayId, width: r.value.width, height: r.value.height } : null; });
-      expect(data).toEqual({ id: target.id, width: target.width, height: target.height }); await close(editor);
-    }
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].show());
-    const rejected = await settings.evaluate(() => window.screenshot.capture({ mode: 'full', target: { kind: 'display', displayId: 999999999 } })); expect(rejected.ok).toBe(false);
-    const target = list.find(d => d.bounds.x < 0) ?? list[1];
-    await settings.getByLabel('Capture display').selectOption(String(target.id));
-    const opened = app.waitForEvent('window'); await settings.getByRole('button', { name: 'Select region', exact: true }).click();
-    const overlay = await opened; await expect(overlay.getByAltText('Frozen screen capture')).toBeVisible();
-    const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('#region'))!.getBounds()); expect(b).toEqual(target.bounds);
-    const next = app.waitForEvent('window'); await overlay.mouse.move(30, 40); await overlay.mouse.down(); await overlay.mouse.move(230, 140); await overlay.mouse.up();
-    const editor = await next; await expect(editor.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();
-    const crop = await editor.evaluate(async () => { const r = await window.screenshot.current(); return r.ok && r.value ? { width: r.value.width, height: r.value.height } : null; });
-    expect(crop).toEqual({ width: Math.round(200 * target.scaleFactor), height: Math.round(100 * target.scaleFactor) });
+    await expect(settings.getByRole('combobox')).toHaveCount(0);
+    const expected = await app.evaluate(({ screen }) => {
+      const ds = screen.getAllDisplays(), scale = Math.max(...ds.map(d => d.scaleFactor));
+      return { width: Math.round((Math.max(...ds.map(d => d.bounds.x + d.bounds.width)) - Math.min(...ds.map(d => d.bounds.x))) * scale), height: Math.round((Math.max(...ds.map(d => d.bounds.y + d.bounds.height)) - Math.min(...ds.map(d => d.bounds.y))) * scale) };
+    });
+    const editor = await capture(app, settings);
+    expect(await editor.evaluate(async () => { const r = await window.screenshot.current(); return r.ok && r.value ? { width: r.value.width, height: r.value.height } : null; })).toEqual(expected);
+    await close(editor);
   } finally { await app.close(); }
 });
 test('Text and Emoji create, edit, discard, resize, select, delete and copy', async () => {

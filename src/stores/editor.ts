@@ -17,9 +17,9 @@ export const useEditor = create<State>((set) => ({ ...initial,
       const size = Math.max(type === 'text' ? 12 : 16, Math.min(type === 'text' ? 160 : 256, value));
       return { ...(type === 'text' ? { textSize: size } : { emojiSize: size }), annotations: s.annotations.map(a => a.id !== s.selectedId ? a : a.type === 'text' ? preserveGlyphOrigin(a, { ...a, fontSize: size }) : a.type === 'emoji' ? preserveGlyphOrigin(a, { ...a, size }) : a) };
     }
-    return type === 'blurStroke' ? { blurWidth: value } : { width: value, annotations: s.annotations.map(a => a.id === s.selectedId && (a.type === 'arrow' || a.type === 'rectangle' || a.type === 'circle' || a.type === 'freehand') ? a.type === 'arrow' ? preserveArrowTip(a, { ...a, width: value }) : { ...a, width: value } : a) };
+    return type === 'blurStroke' ? { blurWidth: value } : { width: value, annotations: s.annotations.map(a => a.id === s.selectedId && (a.type === 'line' || a.type === 'arrow' || a.type === 'rectangle' || a.type === 'circle' || a.type === 'freehand') ? a.type === 'arrow' ? preserveArrowTip(a, { ...a, width: value }) : { ...a, width: value } : a) };
   }),
-  select: selectedId => set(s => { const a = s.annotations.find(a => a.id === selectedId); return { selectedId, ...(a && 'color' in a ? { color: a.color } : {}), ...(a && (a.type === 'arrow' || a.type === 'rectangle' || a.type === 'circle' || a.type === 'freehand') ? { width: a.width } : {}) }; }),
+  select: selectedId => set(s => { const a = s.annotations.find(a => a.id === selectedId); return { selectedId, ...(a && 'color' in a ? { color: a.color } : {}), ...(a && (a.type === 'line' || a.type === 'arrow' || a.type === 'rectangle' || a.type === 'circle' || a.type === 'freehand') ? { width: a.width } : {}) }; }),
   add: a => set(s => ({ annotations: [...s.annotations, a] })),
   replace: a => set(s => ({ annotations: s.annotations.map(old => old.id === a.id ? a : old) })),
   remove: () => set(s => ({ annotations: s.annotations.filter(a => a.id !== s.selectedId), selectedId: null })),

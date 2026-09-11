@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 async function launch() {
   const env: Record<string, string> = { ...Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined)), SCREENSHOT_TEST_USER_DATA: await mkdtemp(join(tmpdir(), 'screenshot-transform-')) }; delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ executablePath: process.env.SCREENSHOT_EXECUTABLE, args: process.env.SCREENSHOT_EXECUTABLE ? [] : [resolve('.')], env });
-  const settings = await app.firstWindow(); await expect(settings.getByLabel('Capture display')).toBeEnabled();
+  const settings = await app.firstWindow(); await expect(settings.getByRole('button', { name: 'Full screen', exact: true })).toBeEnabled();
   const next = app.waitForEvent('window'); await settings.getByRole('button', { name: 'Full screen', exact: true }).click();
   const page = await next; await expect(page.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled(); return { app, page };
 }

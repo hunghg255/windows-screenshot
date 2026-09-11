@@ -7,11 +7,11 @@ export function paint(ctx: CanvasRenderingContext2D, a: Annotation, override?: s
   const rotation = rotationOf(a);
   if (rotation) { const center = boxCenter(frameBounds(a)); ctx.save(); try { ctx.translate(center.x, center.y); ctx.rotate(rotation); ctx.translate(-center.x, -center.y); paint(ctx, { ...a, rotation: 0 }, override, asset); } finally { ctx.restore(); } return; }
   if (a.type === 'image') { if (!asset) throw new Error('Missing image assets.'); ctx.drawImage(asset(a.assetId, a.width, a.height), a.position.x, a.position.y, a.width, a.height); return; }
-  if (a.type === 'arrow') {
+  if (a.type === 'arrow' || a.type === 'line') {
     const { start, end, head } = arrowGeometry(a);
     ctx.strokeStyle = override ?? a.color; ctx.lineWidth = a.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y);
-    for (const p of head) { ctx.moveTo(end.x, end.y); ctx.lineTo(p.x, p.y); }
+    for (const p of a.type === 'line' ? [] : head) { ctx.moveTo(end.x, end.y); ctx.lineTo(p.x, p.y); }
     ctx.stroke(); return;
   }
   if (a.type === 'rectangle') {

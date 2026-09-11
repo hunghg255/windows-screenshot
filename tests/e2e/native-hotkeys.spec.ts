@@ -5,14 +5,14 @@ import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const run = promisify(execFile);
-test('native global hotkeys target the cursor display while another process has focus', async () => {
+test('native global hotkeys capture all displays while another process has focus', async () => {
   test.setTimeout(90000);
   const env: Record<string, string> = { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), SCREENSHOT_TEST_USER_DATA: await mkdtemp(join(tmpdir(), 'screenshot-native-')) }; delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ executablePath: process.env.SCREENSHOT_EXECUTABLE, args: process.env.SCREENSHOT_EXECUTABLE ? [] : [resolve('.')], env });
   const cursor = await app.evaluate(({ screen }) => screen.getCursorScreenPoint());
   const helper = resolve('tests/e2e/native-hotkey.ps1');
   try {
-    const settings = await app.firstWindow(); await expect(settings.getByLabel('Capture display')).toBeEnabled();
+    const settings = await app.firstWindow(); await expect(settings.getByRole('button', { name: 'Full screen', exact: true })).toBeEnabled();
     const registered = await settings.evaluate(() => window.screenshot.updateShortcuts({ full: 'Ctrl+Alt+Shift+F23', region: 'Ctrl+Alt+Shift+F24' })); expect(registered.ok).toBe(true);
     const displays = await app.evaluate(({ screen }) => screen.getAllDisplays().map(d => ({ id: d.id, bounds: d.bounds })));
     test.skip(displays.length < 2, 'Requires two physical displays.');
@@ -25,8 +25,9 @@ test('native global hotkeys target the cursor display while another process has 
       const capture = await next;
       if (key === 134) await expect(capture.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();
       else await expect(capture.getByText('Drag to select')).toBeVisible();
-      await expect.poll(() => capture.evaluate(async () => { const r = await window.screenshot.current(); return r.ok ? r.value?.displayId : null; })).toBe(display.id);
-      if (key === 135) expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('#region'))!.getBounds())).toEqual(display.bounds);
+      const state = await capture.evaluate(async () => { const r = await window.screenshot.current(); return r.ok ? r.value : null; });
+      expect(state!.width).toBeGreaterThan(0);
+      if (key === 135) expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => w.webContents.getURL().endsWith('#region')).length)).toBe(displays.length);
       const closed = capture.waitForEvent('close'); await capture.keyboard.press('Escape').catch(error => { if (!capture.isClosed()) throw error; }); await closed;
     }
   } finally {

@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import type { CaptureData, CaptureMode, CaptureRequest, Settings, Shortcuts } from '../shared/contracts';
-import { resolveDisplay, validateCaptureRequest } from './display-target';
+import type { CaptureData, CaptureRequest, Settings, Shortcuts, Point, Rect } from '../shared/contracts';
+import { validateCaptureRequest } from './display-target';
 import { validRect } from '../shared/geometry';
 import { captureDisplay } from './capture';
+import { compositeDesktop } from './desktop-composite';
+import { desktopLayout, desktopPixels, desktopRegion, intersects, type DesktopLayout } from '../shared/desktop-geometry';
 import { loadSettings, persistSettings } from './settings';
 import { replaceShortcuts } from './shortcuts';
 import { CaptureSession } from './session';
@@ -19,6 +21,14 @@ const baseURL = dev ?? pathToFileURL(join(root, 'dist/index.html')).href;
 let settingsWindow: BrowserWindow | null = null;
 let captureWindow: BrowserWindow | null = null;
 let tray: Tray;
+const overlays = new Map<BrowserWindow, CaptureData>();
+let desktop: DesktopLayout | null = null;
+let selectionStart: Point | null = null;
+let selectionOwner: BrowserWindow | null = null;
+let selectionTimer: ReturnType<typeof setInterval> | null = null;
+function resetSelection() { selectionStart = null; selectionOwner = null; if (selectionTimer) clearInterval(selectionTimer); selectionTimer = null; }
+function closeOverlays() { resetSelection(); const windows = [...overlays.keys()]; overlays.clear(); for (const win of windows) if (!win.isDestroyed()) win.destroy(); }
+function broadcastSelection(rect: Rect | null) { for (const win of overlays.keys()) win.webContents.send('selection-changed', rect); }
 let quitting = false;
 let image: NativeImage | null = null;
 let data: CaptureData | null = null;
@@ -51,57 +61,77 @@ function showSettings() {
   } else { settingsWindow.show(); settingsWindow.focus(); }
 }
 function clearCapture() {
-  active.end(); data = null; image = null;
+  active.end(); data = null; image = null; desktop = null; closeOverlays();
   const old = captureWindow; captureWindow = null;
   if (old && !old.isDestroyed()) old.destroy();
 }
 function showEditor() {
-  const old = captureWindow; captureWindow = null; old?.destroy();
+  const old = captureWindow; captureWindow = null; closeOverlays(); if (old && !old.isDestroyed()) old.destroy();
   const win = createWindow('editor'); captureWindow = win;
   win.once('ready-to-show', () => { win.show(); win.focus(); });
   win.on('closed', () => { if (captureWindow === win) clearCapture(); });
 }
 async function beginCapture(request: CaptureRequest) {
   if (active.id) { captureWindow?.show(); captureWindow?.focus(); return; }
-  const display = resolveDisplay(request, screen.getAllDisplays(), screen.getCursorScreenPoint());
+  const displays = screen.getAllDisplays();
+  const layout = desktopLayout(displays);
   const { mode } = request;
   const id = randomUUID(); active.begin(id);
   settingsWindow?.hide();
   try {
     await new Promise(resolve => setTimeout(resolve, 220));
-    const bitmap = await captureDisplay(display);
-    if (!active.matches(id)) return;
-    image = bitmap;
-    const size = bitmap.getSize();
-    data = { id, image: bitmap.toDataURL(), ...size, mode, displayId: display.id };
+    const frames: NativeImage[] = [];
+    for (const display of displays) {
+      frames.push(await captureDisplay(display));
+      if (!active.matches(id)) return;
+    }
+    desktop = layout;
+    image = compositeDesktop(layout, frames);
+    data = { id, image: mode === 'full' ? image.toDataURL() : '', width: layout.width, height: layout.height, mode };
     if (mode === 'full') showEditor();
     else {
-      const win = createWindow('region', true); captureWindow = win;
-      win.setBounds(display.bounds); win.setAlwaysOnTop(true, 'screen-saver');
-      win.once('ready-to-show', () => { win.show(); win.focus(); });
-      win.on('closed', () => { if (captureWindow === win) clearCapture(); });
+      const ready: Promise<void>[] = [];
+      for (let i = 0; i < displays.length; i++) {
+        const display = displays[i], win = createWindow('region', true);
+        overlays.set(win, { ...data, image: frames[i].toDataURL(), overlayBounds: display.bounds });
+        captureWindow ??= win;
+        win.setBounds(display.bounds); win.setAlwaysOnTop(true, 'screen-saver');
+        ready.push(new Promise(resolve => { win.once('ready-to-show', resolve); win.once('closed', resolve); }));
+        win.webContents.once('did-fail-load', () => { if (overlays.has(win)) clearCapture(); });
+        win.on('closed', () => { if (overlays.has(win)) clearCapture(); });
+        win.webContents.on('render-process-gone', () => { if (overlays.has(win)) clearCapture(); });
+      }
+      await Promise.all(ready);
+      if (!active.matches(id)) return;
+      for (const win of overlays.keys()) win.showInactive();
+      const cursor = screen.getCursorScreenPoint();
+      const focused = [...overlays.keys()].find(win => { const b = overlays.get(win)!.overlayBounds!; return cursor.x >= b.x && cursor.x < b.x + b.width && cursor.y >= b.y && cursor.y < b.y + b.height; });
+      (focused ?? captureWindow)?.focus();
     }
   } catch (error) { if (active.matches(id)) clearCapture(); throw error; }
 }
-function report(error: unknown) { dialog.showErrorBox('Screenshot', error instanceof Error ? error.message : 'The operation failed. Please try again.'); }
-const callbacks = { full: () => { void beginCapture({ mode: 'full', target: { kind: 'cursor' } }).catch(report); }, region: () => { void beginCapture({ mode: 'region', target: { kind: 'cursor' } }).catch(report); } };
-function displayList() {
-  return screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Display ${i + 1}${d.label ? ` · ${d.label}` : ''}`, bounds: d.bounds, width: Math.round(d.bounds.width * d.scaleFactor), height: Math.round(d.bounds.height * d.scaleFactor), scaleFactor: d.scaleFactor }));
+function finishCrop(id: string, rect: unknown) {
+  assertSession(id);
+  if (data!.mode !== 'region' || !desktop || !validRect(rect, data!.width, data!.height) || !desktop.displays.some(d => intersects(rect, desktopPixels(d.bounds, desktop!)))) throw new Error('Select a non-empty region containing a screen.');
+  image = image!.crop(rect); data = { id, image: image.toDataURL(), ...image.getSize(), mode: 'full' }; showEditor();
 }
+function report(error: unknown) { dialog.showErrorBox('Screenshot', error instanceof Error ? error.message : 'The operation failed. Please try again.'); }
+const callbacks = { full: () => { void beginCapture({ mode: 'full' }).catch(report); }, region: () => { void beginCapture({ mode: 'region' }).catch(report); } };
 function refreshTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
-    ...displayList().map(d => ({ label: `${d.label} (${d.width} × ${d.height})`, submenu: (['full', 'region'] as CaptureMode[]).map(mode => ({ label: mode === 'full' ? 'Full screen' : 'Select region', click: () => { void beginCapture({ mode, target: { kind: 'display', displayId: d.id } }).catch(report); } })) })),
+    { label: 'Full screen (all displays)', click: callbacks.full }, { label: 'Select region across displays', click: callbacks.region },
     { type: 'separator' }, { label: 'Settings', click: showSettings }, { label: 'Quit', click: () => app.quit() },
   ]));
 }
 function assertSession(id: unknown) { if (!active.matches(id) || !image || !data) throw new Error('This capture session has ended.'); }
-function handle(channel: string, role: 'settings' | 'capture' | 'any', action: (...args: any[]) => unknown) {
+function handle(channel: string, role: 'settings' | 'capture' | 'any', action: (...args: any[]) => unknown, withSender = false) {
   ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     try {
       const sender = event.sender;
-      const allowed = role === 'settings' ? sender === settingsWindow?.webContents : role === 'capture' ? sender === captureWindow?.webContents : sender === settingsWindow?.webContents || sender === captureWindow?.webContents;
+      const captureSender = sender === captureWindow?.webContents || [...overlays.keys()].some(win => win.webContents === sender);
+      const allowed = role === 'settings' ? sender === settingsWindow?.webContents : role === 'capture' ? captureSender : sender === settingsWindow?.webContents || captureSender;
       if (!allowed || event.senderFrame !== sender.mainFrame || sender.getURL().split('#')[0] !== baseURL + (dev ? '/' : '')) throw new Error('Unauthorized request.');
-      return { ok: true, value: await action(...args) };
+      return { ok: true, value: await action(...(withSender ? [sender, ...args] : args)) };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Operation failed. Please try again.' }; }
   });
 }
@@ -120,7 +150,6 @@ else {
       : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"] } }));
     try { replaceShortcuts(globalShortcut, null, settings.shortcuts, callbacks); registered = settings.shortcuts; } catch (error) { warning += ` ${String(error)}`; }
     handle('settings', 'settings', () => ({ settings, warning }));
-    handle('displays', 'settings', () => ({ displays: displayList(), defaultId: screen.getDisplayMatching(settingsWindow!.getBounds()).id }));
     handle('shortcuts', 'settings', async (next: Shortcuts) => {
       if (configBusy || outputBusy) throw new Error('Please wait for the current operation.'); configBusy = true;
       const old = registered;
@@ -132,7 +161,23 @@ else {
       } finally { configBusy = false; }
     });
     handle('capture', 'settings', (request: unknown) => { if (!validateCaptureRequest(request)) throw new Error('Invalid capture request.'); return beginCapture(request); });
-    handle('current', 'capture', () => data);
+    handle('current', 'capture', (sender: Electron.WebContents) => overlays.get(BrowserWindow.fromWebContents(sender)!) ?? data, true);
+    handle('selection', 'capture', (sender: Electron.WebContents, id: string, phase: string) => {
+      assertSession(id);
+      const win = BrowserWindow.fromWebContents(sender);
+      if (!win || !overlays.has(win) || !desktop || data!.mode !== 'region') throw new Error('Selection is not available.');
+      if (phase === 'start') {
+        if (selectionOwner) throw new Error('A selection is already active.');
+        selectionOwner = win; selectionStart = screen.getCursorScreenPoint();
+        broadcastSelection(desktopRegion(selectionStart, selectionStart, desktop));
+        selectionTimer = setInterval(() => { if (selectionStart && desktop) broadcastSelection(desktopRegion(selectionStart, screen.getCursorScreenPoint(), desktop)); }, 16);
+      } else if (phase === 'reset' || phase === 'end') {
+        if (selectionOwner !== win || !selectionStart) throw new Error('No active selection in this window.');
+        const rect = desktopPixels(desktopRegion(selectionStart, screen.getCursorScreenPoint(), desktop), desktop);
+        resetSelection(); broadcastSelection(null);
+        if (phase === 'end' && rect.width && rect.height) finishCrop(id, rect);
+      } else throw new Error('Invalid selection action.');
+    }, true);
     handle('import-image', 'capture', async (id: string) => {
       assertSession(id);
       if (importBusy || outputBusy || data!.mode !== 'full') throw new Error('Please wait for the current operation.');
@@ -146,11 +191,7 @@ else {
       } finally { importBusy = false; }
     });
     handle('cancel', 'capture', (id: string) => { assertSession(id); if (outputBusy) throw new Error('Please wait for export.'); clearCapture(); });
-    handle('crop', 'capture', (id: string, rect: unknown) => {
-      assertSession(id);
-      if (data!.mode !== 'region' || !validRect(rect, data!.width, data!.height)) throw new Error('Select a non-empty region within the display.');
-      image = image!.crop(rect); data = { ...data!, image: image.toDataURL(), ...image.getSize(), mode: 'full' }; showEditor();
-    });
+    handle('crop', 'capture', finishCrop);
     handle('output', 'capture', async (id: string, action: string, png: unknown) => {
       assertSession(id);
       if (outputBusy || importBusy || configBusy || data!.mode !== 'full' || !['copy', 'save'].includes(action)) throw new Error('Export is not available.');
@@ -173,7 +214,7 @@ else {
     tray.setToolTip('Screenshot');
     refreshTray();
     tray.on('double-click', showSettings);
-    const displayChanged = () => { refreshTray(); settingsWindow?.webContents.send('displays-changed'); if (active.id) { clearCapture(); report(new Error('Display configuration changed. Please capture again.')); } };
+    const displayChanged = () => { refreshTray(); if (active.id) { clearCapture(); report(new Error('Display configuration changed. Please capture again.')); } };
     screen.on('display-added', displayChanged); screen.on('display-removed', displayChanged); screen.on('display-metrics-changed', displayChanged);
     showSettings();
   }).catch(report);

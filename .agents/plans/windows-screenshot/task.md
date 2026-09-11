@@ -394,3 +394,39 @@ Rủi ro: pointer/handles sai hướng, blur lệch nguồn, export sai W/H, tă
 ### Kết quả triển khai xoay ảnh
 
 Đã thêm nút xoay 90°, Zustand quarter-turns, preview/fit/pointer/handles/export đồng bộ và PNG validator nhận đúng W/H gốc hoặc hoán đổi. Không thay IPC. Build/typecheck, 126 unit tests và 7 E2E liên quan đạt; đã xem ảnh UI tổng hợp. So pixel dirty/full redraw dùng software rasterization do GPU có sai khác antialias giữa lần vẽ; app giữ cấu hình GPU hiện tại. Chi tiết tại docs/windows-qa.md. Còn manual Save/Paint, DPI/4K và zoom/edge rộng hơn; chưa build installer.
+
+## Bổ sung: Line, header grid và chụp toàn bộ màn hình (2026-09-11)
+
+**Status: implemented; Tasks 48-53 done; Tasks 47 and 54 need hardware/manual review.** Task 47–54 bổ sung theo bốn yêu cầu mới; giữ nguyên evidence và các mục manual còn mở của Task 01–46. Phần này thay thế thiết kế chụp theo màn hình được chọn/con trỏ trước đây cho cả Full screen và Select region.
+
+### Hiện trạng đã đối chiếu code
+- Toolbar.tsx chưa có Line; model.ts chỉ có arrow/rectangle/circle và các công cụ khác. styles.css dùng flex-wrap: wrap cho toolbar nên nhóm hành động có thể rơi xuống hàng.
+- main.ts resolveDisplay rồi captureDisplay một màn hình, overlay setBounds(display.bounds). SelectionOverlay.tsx quy đổi và clamp pointer trong bitmap màn hình đó. Phím tắt dùng màn hình dưới con trỏ; trang chủ dùng màn hình được chọn trong dropdown.
+
+### Hành vi và quyết định thiết kế
+1. Thêm nút Line vẽ đoạn thẳng hai đầu, không có đầu mũi tên. Hỗ trợ màu, độ dày, chọn, di chuyển, resize, xóa và xuất như annotation hiện có. Nét giữ độ dày theo pixel ảnh khi resize; click không kéo không tạo đối tượng. Preview, hit-test, bounds và Copy/Save phải thống nhất, kể cả sau xoay toàn ảnh.
+2. Header dùng CSS grid hai cột bằng nhau: repeat(2, minmax(0, 1fr)). Nửa trái chứa công cụ/thuộc tính đối tượng; nửa phải chứa Copy, Save, Cancel, căn phải. Hai nhóm luôn cùng hàng. Nhóm trái min-width: 0 và cuộn ngang khi thiếu chỗ, không làm rộng cửa sổ; hành động không co hoặc wrap. Kiểm chứng tại minWidth hiện tại 640 px và rộng hơn; nếu nhóm phải thiếu chỗ thì dùng nút icon có accessible label/tooltip ở breakpoint phù hợp. Tab/focus phải đưa công cụ đang focus vào vùng nhìn thấy.
+3. Bỏ dropdown chọn màn hình trên home và thông báo phụ thuộc màn được chọn. Full screen chụp tất cả màn hình hiện có, ghép thành một ảnh và mở editor. Select region cho phép một lần nhấn–kéo–thả từ màn bất kỳ sang màn khác, gồm 3 màn trở lên. Home, phím tắt và tray dùng cùng hành vi; bỏ menu tray chọn riêng từng màn và câu mô tả chụp màn dưới con trỏ.
+4. Ghép theo vị trí màn hình trong Windows (virtual desktop), không tự xếp thành một hàng: hỗ trợ tọa độ âm, bố trí trên/dưới, lệch mép, màn dọc. Chuẩn hóa origin về góc trái trên của union. Khoảng trống không có màn hình được để trong suốt; vùng chỉ chứa khoảng trống không hoàn tất crop.
+5. Dùng DIP toàn desktop cho selection; mỗi màn giữ bounds, scaleFactor và kích thước bitmap thực. Đề xuất mật độ ảnh đầu ra chung bằng scaleFactor lớn nhất của các màn tham gia để tránh hạ độ phân giải màn DPI cao; màn DPI thấp được resample. Single-display giữ độ phân giải gốc. Tính chung các cạnh làm tròn để không hở/chồng seam. Chốt quy tắc qua Task 47 trước khi nối luồng; không giả định một tỷ lệ client-to-pixel cho các overlay mixed DPI.
+6. Chụp các màn trước khi hiện overlay để không tự chụp lớp phủ; ghép/crop giữ trong RAM. Với region, ưu tiên chỉ tạo bitmap cuối cho vùng được chọn để giảm RAM. Đặt và kiểm chứng giới hạn cạnh/pixel/tổng buffer trước khi cấp phát, đồng bộ với validator xuất ảnh; vượt giới hạn phải báo lỗi rõ ràng, không âm thầm bỏ màn hoặc giảm chất lượng.
+7. Spike xác minh một overlay phủ union và pointer capture trên Windows mixed DPI. Nếu không giữ đúng pointer/hiển thị, dùng overlay từng màn phối hợp qua một session và tọa độ desktop chung, có theo dõi pointer/release xuyên cửa sổ được kiểm chứng. Không dùng các selection độc lập theo màn. IPC chỉ mở các thông điệp capture cần thiết, kiểm tra sender/session/bounds; Esc, mất pointer, hủy, lỗi một màn hoặc đổi cấu hình màn hình phải dọn toàn bộ phiên.
+
+### Thứ tự triển khai và nghiệm thu
+47 (spike nhiều màn) → 48 (geometry ghép) → 49 (capture/selection tích hợp) → 50 (home/tray); 51 (Line geometry) → 52 (Line UI); 53 (header grid sau khi thêm Line) → 54 (QA tổng hợp). Checklist chi tiết trong todo.md.
+
+Rủi ro chính: mixed DPI gây lệch seam/pointer; union lớn tăng RAM; release ngoài cửa sổ bị mất; hotplug tạo dữ liệu phiên cũ. Dùng fixture màu theo màn, geometry unit tests và kiểm chứng desktop thật. Các màn được lấy frame riêng nên không cam kết đồng bộ tuyệt đối với nội dung đang chuyển động. Không log/upload pixel hoặc lưu capture tạm. Không đánh dấu QA nhiều màn thật đạt chỉ dựa trên mock.
+
+
+### Implementation results for Tasks 47-54 (2026-09-11)
+
+All four requested changes are implemented. Line uses the annotation rendering/editing/export pipeline; the header uses equal grid columns; home/tray/hotkeys capture the entire desktop; per-display frozen overlays share one main-process selection owner and native DIP cursor sampler. Gaps remain transparent. Output uses the highest display scale. Removed obsolete display targeting/list/subscription IPC. Nearest-center handle selection fixes overlapping targets at desktop-fit zoom.
+
+Limits: 32 million pixels for both the composite and aggregate source frames, and 16384 pixels per output edge. One 32 MP BGRA surface is 128 MB, not a hard process RAM limit. Region currently composites before selection instead of delaying composition until crop, so an oversized desktop reports an error even for a small desired crop. The native-input E2E serves as the spike instead of a separate spike script.
+
+Validation: production build/typecheck, 130 unit tests, 23 E2E passed. Native drag works both directions across two scale-1 physical monitors with a negative origin. Three mixed-DPI monitors were tested with synthetic fixtures; physical 3+ monitor/mixed-DPI/4K and native Save/Paint checks remain open. Synthetic 640 px header and Line editor screenshots were visually reviewed. See docs/windows-qa.md for evidence and limitations. No installer or version bump.
+
+
+## Follow-up: two-row header and output feedback (2026-09-11)
+
+Status: done (Task 55). User explicitly replaced horizontal scrolling and equal columns. Left tools now have two fixed rows; Copy/Save/Cancel at right use icons with tooltips and accessible labels. Successful output feedback is green, bold and larger at bottom right, with a tinted background; no toast needed. This supersedes Task 53's scrolling/equal-column design. Build/typecheck, 130 unit tests and three focused final E2E passed. Screenshots and evidence: docs/windows-qa.md. Earlier hardware/manual checks remain open.

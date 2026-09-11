@@ -85,7 +85,7 @@ test('rotated render matches independent rectangle paths and fresh exports; synt
       renderer.render(output, []); dirtyMatches &&= output.toDataURL() === renderer.export([]); renderer.dispose();
       const fixturePath = '/tests/fixtures/rotation-preview.tsx';
       const { mountPreview } = await import(/* @vite-ignore */ fixturePath) as typeof import('../fixtures/rotation-preview');
-      mountPreview({ id: 'synthetic-rotation', image: original.src, width: 960, height: 640, mode: 'full', displayId: 0 });
+      mountPreview({ id: 'synthetic-rotation', image: original.src, width: 960, height: 640, mode: 'full' });
       return { maxReferenceDifference, dirtyMatches, annotations };
     });
     expect(result.maxReferenceDifference).toBeLessThan(12); expect(result.dirtyMatches).toBe(true);

@@ -36,9 +36,9 @@ export function hit(a: Annotation, p: Point, tolerance: number) {
   if (rotation) return hit({ ...a, rotation: 0 }, rotatePoint(p, boxCenter(frameBounds(a)), -rotation), tolerance);
   if (a.type === 'image') { const b = frameBounds(a); return p.x >= b.x - tolerance && p.x <= b.right + tolerance && p.y >= b.y - tolerance && p.y <= b.bottom + tolerance; }
   if (a.type === 'rectangle' && a.transform) return hit({ ...a, start: transformPoint(a.start, a.transform ?? identity), end: transformPoint(a.end, a.transform ?? identity), transform: undefined }, p, tolerance);
-  if (a.type === 'arrow') {
+  if (a.type === 'arrow' || a.type === 'line') {
     const { start, end, head } = arrowGeometry(a), distance = tolerance + a.width / 2;
-    return segmentDistance(p, start, end) <= distance || head.some(v => segmentDistance(p, end, v) <= distance);
+    return segmentDistance(p, start, end) <= distance || (a.type === 'arrow' && head.some(v => segmentDistance(p, end, v) <= distance));
   }
   if (a.type === 'circle') {
     const { center, rx, ry } = ellipseGeometry(a);

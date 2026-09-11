@@ -1071,3 +1071,143 @@ Status: implemented, needs manual review. Giữ nguyên Task 01–33 và bằng 
 
 **Evidence:** Build/typecheck đạt; 126 unit tests; screenshot-rotation 2 passed, transform/rotation-render/image-import 5 passed. Synthetic pixel test dùng software rasterization để so antialias ổn định; real Copy/Save và regression dùng GPU mặc định. Save chooser được thay trong E2E.
 **Actual scope:** Thêm electron/image-output.ts để chấp nhận W/H hoán đổi, không đổi shared/preload API. Store regression mới nằm cùng tests/screenshot-rotation.test.ts.
+
+## Task 47: Kiểm chứng kiến trúc selection xuyên màn hình
+**Status: needs review; automated checks passed, hardware/manual checks pending.**
+**Description:** Spike Windows để chọn cơ chế overlay/pointer và xác minh quy tắc DPI trước khi thay capture.
+**Acceptance criteria:**
+- [ ] Chứng minh press ở màn A, move qua B, release ở C hoàn tất một selection; xác minh kéo ngược, tọa độ âm và mixed DPI.
+- [x] Chốt overlay phủ union hoặc overlay phối hợp, mapping DIP/pixel, mật độ xuất và giới hạn bộ nhớ/cạnh/pixel có số liệu.
+- [x] Ghi bằng chứng và cấu hình đã thử; nếu thiếu phần cứng, ghi rõ chưa xác minh và giữ checkpoint mở.
+**Verification:** Spike trên desktop Windows mở khóa với 2 và 3+ màn, 100%/150%/200%; ghi kết quả vào docs/windows-qa.md.
+**Dependencies:** None.
+**Files likely touched:** scripts/multi-display-spike.ts (mới), docs/windows-qa.md.
+**Estimated scope:** S.
+
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Task 48: Geometry desktop và ghép bitmap
+**Status: done.**
+**Description:** Tạo các phép quy đổi và composite có thể kiểm thử độc lập.
+**Acceptance criteria:**
+- [x] Union/origin, giao vùng chọn và mapping mỗi màn đúng cho vị trí âm, màn dọc, lệch mép, khoảng trống và mixed DPI.
+- [x] Ghép theo cạnh chung không hở/chồng pixel; single-display giữ kích thước gốc, vùng trống alpha và không chấp nhận crop chỉ có khoảng trống.
+- [x] Kiểm tra giới hạn cấp phát và đầu vào hữu hạn trước ghép; fixture xác nhận màu/kích thước theo tham chiếu độc lập.
+**Verification:** pnpm.cmd test -- tests/desktop-geometry.test.ts tests/desktop-composite.test.ts; pnpm.cmd typecheck.
+**Dependencies:** 47.
+**Files likely touched:** shared/desktop-geometry.ts (mới), electron/desktop-composite.ts (mới), tests/desktop-geometry.test.ts (mới), tests/desktop-composite.test.ts (mới).
+**Estimated scope:** M.
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Checkpoint: Kiến trúc nhiều màn
+- [ ] Cơ chế drag/release và mixed DPI có bằng chứng; unit geometry/composite đạt, giới hạn bộ nhớ đã chốt.
+
+## Task 49: Tích hợp capture toàn desktop và selection chung
+**Status: done.**
+**Description:** Nối bitmap tất cả màn và selection xuyên màn vào session/editor hiện có.
+**Acceptance criteria:**
+- [x] Full tạo ảnh union; region chọn xuyên mọi màn và crop đúng một ảnh; không còn clamp theo màn bắt đầu.
+- [x] Typed IPC/metadata phân biệt DIP và pixel; sender/session/rect được kiểm tra, CaptureData sau crop mô tả đúng bitmap editor.
+- [x] Esc, pointer cancel, lỗi capture, hotplug/DPI change và callback cũ dọn phiên/buffer/overlay; validator output chấp nhận đúng ảnh ghép và kích thước sau xoay.
+**Verification:** pnpm.cmd typecheck; pnpm.cmd test; pnpm.cmd build; smoke full/region/cancel trên Windows. E2E riêng ở Task 54.
+**Dependencies:** 48.
+**Files likely touched:** electron/capture.ts, electron/main.ts, electron/preload.cts, shared/contracts.ts, src/capture/SelectionOverlay.tsx; rà soát electron/session.ts và electron/image-output.ts, tách follow-up nhỏ nếu cần sửa.
+**Estimated scope:** M, tách thêm khi spike yêu cầu coordinator riêng.
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Task 50: Bỏ chọn màn trên home, thống nhất tray/phím tắt
+**Status: done.**
+**Description:** Mọi điểm bắt đầu chụp dùng toàn bộ màn hiện có.
+**Acceptance criteria:**
+- [x] Home bỏ dropdown/state màn được chọn; hai nút Full screen/Select region hoạt động không phụ thuộc vị trí chuột.
+- [x] Tray bỏ lựa chọn riêng từng màn, shortcut dùng cùng capture pipeline; sửa mô tả để nói rõ toàn bộ màn hình.
+- [x] Loại bỏ contract/validation chọn cursor/display và subscription UI không còn dùng; không mở rộng preload chung hoặc làm hỏng đăng ký shortcut.
+**Verification:** pnpm.cmd typecheck; pnpm.cmd test -- tests/display-target.test.ts tests/shortcuts.test.ts; kiểm tra home/tray/shortcut.
+**Dependencies:** 49.
+**Files likely touched:** src/settings/ShortcutSettings.tsx, electron/main.ts, electron/display-target.ts, tests/display-target.test.ts; contract đã chuyển ở Task 49.
+**Estimated scope:** M.
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Checkpoint: Luồng chụp thống nhất
+- [x] Home/tray/shortcut chụp cùng desktop; full/region/cancel và output hoạt động; typecheck/unit/build đạt.
+
+## Task 51: Model, render và tương tác geometry Line
+**Status: done.**
+**Description:** Bổ sung annotation đoạn thẳng hai đầu vào pipeline chung.
+**Acceptance criteria:**
+- [x] Line vẽ ngang/dọc/chéo đúng, không arrowhead; loại đoạn rỗng theo ngưỡng hiện có.
+- [x] Bounds/hit-test/resize giữ width, không chia 0 với đoạn ngang/dọc; chọn theo khoảng cách tới nét, dirty redraw đủ vùng cũ/mới.
+- [x] Preview/export thống nhất; không thay hành vi arrow, freehand, blur hoặc các shape khác.
+**Verification:** pnpm.cmd test -- tests/line.test.ts; pnpm.cmd typecheck sau Task 52 hoàn tất các union consumer.
+**Dependencies:** None.
+**Files likely touched:** src/editor/model.ts, src/editor/render.ts, src/editor/transform.ts, src/editor/hit-test.ts, tests/line.test.ts (mới).
+**Estimated scope:** M.
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Task 52: Nút Line và thao tác editor
+**Status: done.**
+**Description:** Nối Line vào toolbar, pointer và Zustand theo pattern hiện có.
+**Acceptance criteria:**
+- [x] Nút Line có icon/tooltip/accessible label, trạng thái active/disabled; kéo tạo một đoạn và click không kéo không tạo đối tượng.
+- [x] Chọn, move, resize, đổi màu/width, delete hoạt động; giữ nét khi resize và thao tác đúng sau xoay screenshot.
+- [x] Copy/Save gồm Line đúng vị trí/nét, cancel không để lại pixel; kiểm thử store và flow editor.
+**Verification:** pnpm.cmd typecheck; pnpm.cmd test -- tests/line.test.ts tests/store.test.ts; pnpm.cmd build.
+**Dependencies:** 51.
+**Files likely touched:** src/editor/Toolbar.tsx, src/editor/Editor.tsx, src/stores/editor.ts, tests/store.test.ts.
+**Estimated scope:** M.
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Task 53: Header editor grid hai nửa
+**Status: done.**
+**Description:** Tách nhóm công cụ/đối tượng trái và Copy/Save/Cancel phải, giữ một hàng khi thu cửa sổ.
+**Acceptance criteria:**
+- [x] Grid hai cột bằng nhau với minmax(0, 1fr); nhóm phải căn phải, không wrap/chồng lấn/rơi xuống dòng ở 640/800/1120 px.
+- [x] Nhóm trái cuộn ngang nội bộ khi thiếu chỗ; cả Line và thuộc tính ảnh/text/emoji vẫn truy cập bằng chuột và bàn phím.
+- [x] Copy/Save/Cancel luôn nhìn thấy và có accessible name; capture canvas fit lại đúng sau resize cửa sổ.
+**Verification:** pnpm.cmd typecheck; pnpm.cmd build; visual screenshots và E2E responsive ở Task 54.
+**Dependencies:** 52.
+**Files likely touched:** src/editor/Toolbar.tsx, src/styles.css.
+**Estimated scope:** S.
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Checkpoint: Editor hoàn chỉnh
+- [x] Line render/interactions đạt; header luôn một hàng, mọi công cụ truy cập được; unit/typecheck/build đạt.
+
+## Task 54: Regression và nghiệm thu bốn yêu cầu
+**Status: needs review; automated checks passed, hardware/manual checks pending.**
+**Description:** Thêm kiểm thử tích hợp, cập nhật kỳ vọng chụp theo toàn desktop và ghi QA thực tế.
+**Acceptance criteria:**
+- [x] E2E Line (draw/select/resize/delete/rotate/export) và header 640/800/1120 px đạt; chụp ảnh UI bằng fixture tổng hợp.
+- [x] Fixture nhiều màn xác nhận full/region/crop/seam/alpha/kích thước xuất và hủy/lỗi; cập nhật test cũ phụ thuộc dropdown/cursor để đúng yêu cầu mới.
+- [ ] Manual desktop thật 1, 2, 3+ màn, mixed DPI, âm X/Y, bố trí dọc/lệch, kéo hai chiều, release màn cuối, hotplug, Copy/Paint và native Save; ghi rõ từng mục chưa thử.
+**Verification:** pnpm.cmd typecheck; pnpm.cmd test; pnpm.cmd build; pnpm.cmd exec playwright test; manual Windows mở khóa (E2E dùng clipboard).
+**Dependencies:** 50, 53.
+**Files likely touched:** tests/e2e/line-header.spec.ts (mới), tests/e2e/multi-display.spec.ts (mới), tests/e2e/screenshot.spec.ts, docs/windows-qa.md, README.md; rà soát các spec native-hotkeys/updates liên quan và tách task nếu cần.
+**Estimated scope:** M.
+
+
+**Evidence:** Build/typecheck, 130 unit tests and 23 E2E passed. See docs/windows-qa.md for actual files, measurements and hardware limitations.
+
+## Checkpoint: Hoàn tất bổ sung 2026-09-11
+- [x] Bốn yêu cầu có code và bằng chứng nghiệm thu; automated checks đạt.
+- [ ] Kiểm chứng desktop thật nhiều màn/mixed DPI; không coi mock là thay thế phần cứng.
+- [x] Giữ nguyên các checkbox manual còn mở của phần việc trước; cập nhật status theo kiểm chứng thực tế.
+
+Final automated verification: 130 unit tests and 23 E2E passed; production build and both typechecks passed. Physical 3+ monitors, mixed DPI/4K and native Save/Paint remain open.
+
+
+## Task 55: Two-row header, icon actions and visible output feedback
+**Status: done.**
+**Source:** User follow-up replacing horizontal scrolling with two rows and requesting icon-only right actions and green/bold Copy/Save feedback.
+- [x] Two fixed left rows without horizontal scrolling at 640/800/1120 px; image dimensions remain on row two.
+- [x] Copy/Save/Cancel at right have icons, native tooltips and accessible labels.
+- [x] Successful output is 14 px/700-weight success green on a tinted background; other statuses retain their meaning; footer height avoids fit changes.
+**Verification:** Build/typecheck, 130 unit tests, three focused final E2E passed; synthetic screenshots visually reviewed. No toast dependency needed.
+**Dependencies:** Supersedes Task 53 design; prior unfinished hardware checks remain unchanged.

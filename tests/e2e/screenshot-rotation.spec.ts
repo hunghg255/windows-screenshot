@@ -65,7 +65,7 @@ test('whole screenshot rotation preserves pixels, editable objects and pointer g
       const debug = differences.length ? { actual: target.toDataURL(), expected: renderer.export(changed, 1) } : null;
       renderer.dispose(); source = new Uint8ClampedArray();
       const { mountPreview } = await import(/* @vite-ignore */ fixturePath) as typeof import('../fixtures/rotation-preview');
-      mountPreview({ id: 'synthetic-scene', image: image.src, width: 640, height: 400, mode: 'full', displayId: 0 });
+      mountPreview({ id: 'synthetic-scene', image: image.src, width: 640, height: 400, mode: 'full' });
       return { exact, differences, debug, annotations: annotations.filter(a => a.type !== 'image') };
     });
     if (result.debug) for (const [name, url] of Object.entries(result.debug)) await info.attach(name, { body: Buffer.from(url.split(',')[1], 'base64'), contentType: 'image/png' });

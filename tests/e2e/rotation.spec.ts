@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 async function launch() {
   const env: Record<string, string> = { ...Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined)), SCREENSHOT_TEST_USER_DATA: await mkdtemp(join(tmpdir(), 'screenshot-rotation-')) }; delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ executablePath: process.env.SCREENSHOT_EXECUTABLE, args: process.env.SCREENSHOT_EXECUTABLE ? [] : [resolve('.')], env });
-  const settings = await app.firstWindow(); await expect(settings.getByLabel('Capture display')).toBeEnabled();
+  const settings = await app.firstWindow(); await expect(settings.getByRole('button', { name: 'Full screen', exact: true })).toBeEnabled();
   const next = app.waitForEvent('window'); await settings.getByRole('button', { name: 'Full screen', exact: true }).click();
   const page = await next; await expect(page.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();
   return { app, page };
@@ -35,7 +35,7 @@ test('rotate every supported type, preserve rotated resize anchors, cancel and c
   const { app, page } = await launch();
   try {
     const c = (await page.getByLabel('Screenshot annotation canvas').boundingBox())!, x = c.x + c.width * .4, y = c.y + c.height * .4;
-    for (const tool of ['Arrow', 'Rectangle (Shift for square)', 'Text', 'Emoji']) {
+    for (const tool of ['Line', 'Arrow', 'Rectangle (Shift for square)', 'Text', 'Emoji']) {
       await page.getByLabel(tool, { exact: true }).click();
       if (tool === 'Text') {
         await page.mouse.click(x, y); await page.getByLabel('Content', { exact: true }).fill('Tiếng Việt\nRotate text'); await page.getByRole('button', { name: 'Done', exact: true }).click();

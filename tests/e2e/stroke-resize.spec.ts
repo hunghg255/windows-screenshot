@@ -14,7 +14,7 @@ test('arrow, circle and freehand have constant ink, clean redraw and matching Co
   const env: Record<string, string> = { ...Object.fromEntries(Object.entries(process.env).filter((p): p is [string, string] => p[1] !== undefined)), SCREENSHOT_DEV_URL: `http://127.0.0.1:${(server.httpServer!.address() as { port: number }).port}`, SCREENSHOT_TEST_USER_DATA: join(dir, 'profile') }; delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [resolve('.')], env });
   try {
-    const settings = await app.firstWindow(); await expect(settings.getByLabel('Capture display')).toBeEnabled();
+    const settings = await app.firstWindow(); await expect(settings.getByRole('button', { name: 'Full screen', exact: true })).toBeEnabled();
     const next = app.waitForEvent('window'); await settings.getByRole('button', { name: 'Full screen', exact: true }).click();
     const page = await next; await expect(page.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();
     const result = await page.evaluate(async () => {

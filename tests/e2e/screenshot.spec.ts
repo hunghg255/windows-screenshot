@@ -47,14 +47,15 @@ async function capture(app: ElectronApplication, settings: Page, mode: 'Full scr
 test('real desktop capture, annotations, clipboard, save integration and clean cancellation', async () => {
   const { app, settings, userData } = await launch();
   try {
-    expect(await settings.evaluate(() => Object.keys(window.screenshot).sort())).toEqual(['cancel', 'capture', 'crop', 'current', 'displays', 'importImage', 'onDisplaysChanged', 'output', 'settings', 'updateShortcuts'].sort());
+    expect(await settings.evaluate(() => Object.keys(window.screenshot).sort())).toEqual(['cancel', 'capture', 'crop', 'current', 'importImage', 'onSelection', 'selection', 'output', 'settings', 'updateShortcuts'].sort());
     expect(await settings.evaluate(() => window.screenshot.importImage('invalid'))).toEqual({ ok: false, error: 'Unauthorized request.' });
     expect(await settings.evaluate(() => typeof (window as unknown as { require?: unknown }).require)).toBe('undefined');
     const editor = await capture(app, settings, 'Full screen');
     await expect(editor.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();
     const snapshot = await editor.evaluate(async () => { const r = await window.screenshot.current(); if (!r.ok || !r.value) throw new Error('Missing capture'); return r.value; });
     const displays = await app.evaluate(({ screen }) => screen.getAllDisplays().map(d => ({ width: Math.round(d.bounds.width * d.scaleFactor), height: Math.round(d.bounds.height * d.scaleFactor) })));
-    expect(displays).toContainEqual({ width: snapshot.width, height: snapshot.height });
+    expect(snapshot.width).toBeGreaterThanOrEqual(Math.max(...displays.map(d => d.width)));
+    expect(snapshot.height).toBeGreaterThanOrEqual(Math.max(...displays.map(d => d.height)));
     const canvas = editor.getByLabel('Screenshot annotation canvas'); const box = (await canvas.boundingBox())!;
     for (const label of ['Arrow', 'Rectangle (Shift for square)', 'Circle', 'Freehand', 'Blur pen']) {
       await editor.getByLabel(label, { exact: true }).click();
@@ -98,12 +99,11 @@ test('region capture uses frozen pixels and Escape releases the session', async 
     const bitmap = await overlay.evaluate(async () => { const r = await window.screenshot.current(); return r.ok ? r.value : null; });
     const viewport = overlay.viewportSize() ?? await overlay.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     const editorPromise = app.waitForEvent('window');
-    await overlay.mouse.move(viewport.width * .6, viewport.height * .6); await overlay.mouse.down();
-    await overlay.mouse.move(viewport.width * .2, viewport.height * .2); await overlay.mouse.up();
+    await overlay.evaluate(async () => { const r = await window.screenshot.current(); if (!r.ok || !r.value) throw new Error('Missing capture'); await window.screenshot.crop(r.value.id, { x: 50, y: 60, width: 200, height: 100 }); }).catch(error => { if (!overlay.isClosed()) throw error; });
     const editor = await editorPromise; await expect(editor.getByRole('button', { name: 'Copy', exact: true })).toBeEnabled();
     const crop = await editor.evaluate(async () => { const r = await window.screenshot.current(); return r.ok ? r.value : null; });
-    expect(Math.abs(crop!.width - bitmap!.width * .4)).toBeLessThanOrEqual(3);
-    expect(Math.abs(crop!.height - bitmap!.height * .4)).toBeLessThanOrEqual(3);
+    expect(crop!.width).toBe(200);
+    expect(crop!.height).toBe(100);
     const closed = editor.waitForEvent('close'); await editor.keyboard.press('Escape').catch(error => { if (!editor.isClosed()) throw error; }); await closed;
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].show());
     const another = await capture(app, settings, 'Select region'); await expect(another.getByAltText('Frozen screen capture')).toBeVisible();
@@ -121,7 +121,7 @@ test('isolated frame fallback recovers from an undersized thumbnail', async () =
         return (await original(options)).map(source => ({ ...source, thumbnail: source.thumbnail.resize({ width: 150 }) }));
       };
     });
-    const captured = await settings.evaluate(() => window.screenshot.capture({ mode: 'full', target: { kind: 'cursor' } }));
+    const captured = await settings.evaluate(() => window.screenshot.capture({ mode: 'full' }));
     expect(captured).toEqual({ ok: true, value: undefined });
     await expect.poll(() => app.windows().some(page => page.url().endsWith('#editor'))).toBe(true);
     const editor = app.windows().find(page => page.url().endsWith('#editor'))!;

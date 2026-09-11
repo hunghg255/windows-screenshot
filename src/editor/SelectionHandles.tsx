@@ -13,8 +13,20 @@ export function SelectionHandles({ bounds, quarterTurns = 0, rotation: localRota
   width = size.width; height = size.height;
   const rotation = localRotation + quarterTurns * Math.PI / 2;
   const degrees = Math.round(normalizeAngle(localRotation) * 180 / Math.PI) % 360;
+  function startResize(e: PointerEvent<HTMLButtonElement>, fallback: Handle) {
+    e.stopPropagation();
+    // At desktop-fit zoom, handle hit areas can overlap. Pick the closest center,
+    // rather than whichever overlapping button happens to be last in the DOM.
+    let nearest = fallback, distance = Infinity;
+    for (const button of e.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('.resize-handle')) {
+      const box = button.getBoundingClientRect();
+      const next = Math.hypot(e.clientX - box.x - box.width / 2, e.clientY - box.y - box.height / 2);
+      if (next < distance) { distance = next; nearest = button.dataset.handle as Handle; }
+    }
+    start(e, nearest);
+  }
   return <div className="annotation-selection" aria-label="Selected object" data-rotation={degrees} style={{ left: `${b.x / width * 100}%`, top: `${b.y / height * 100}%`, width: `${(b.right - b.x) / width * 100}%`, height: `${(b.bottom - b.y) / height * 100}%`, transform: `rotate(${rotation}rad)` }} onPointerDown={e => start(e, 'move')} onDoubleClick={edit}>
-    {handles.map(handle => <button key={handle} type="button" className="resize-handle" aria-label={`Resize ${handle}`} style={{ left: handle.includes('w') ? '0%' : handle.includes('e') ? '100%' : '50%', top: handle.includes('n') ? '0%' : handle.includes('s') ? '100%' : '50%', cursor: resizeCursor(handle, rotation) }} onDoubleClick={e => e.stopPropagation()} onPointerDown={e => { e.stopPropagation(); start(e, handle); }} />)}
+    {handles.map(handle => <button key={handle} type="button" className="resize-handle" data-handle={handle} aria-label={`Resize ${handle}`} style={{ left: handle.includes('w') ? '0%' : handle.includes('e') ? '100%' : '50%', top: handle.includes('n') ? '0%' : handle.includes('s') ? '100%' : '50%', cursor: resizeCursor(handle, rotation) }} onDoubleClick={e => e.stopPropagation()} onPointerDown={e => startResize(e, handle)} />)}
     {rotatable && <><span className="rotation-stem" aria-hidden="true" /><button type="button" className="rotation-handle" aria-label="Rotate selected object" title={`Rotate ${degrees}° · Shift: snap 15°`} onDoubleClick={e => e.stopPropagation()} onPointerDown={e => { e.stopPropagation(); start(e, 'rotate'); }}><span aria-hidden="true">↻</span></button><span className="rotation-angle" aria-hidden="true" style={{ transform: `translate(-50%, -50%) rotate(${-rotation}rad)` }}>{degrees}°</span></>}
   </div>;
 }

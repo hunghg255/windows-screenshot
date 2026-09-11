@@ -12,7 +12,7 @@ test('insert all image formats, transform, cancel, export and validate SVG', asy
   const env: Record<string, string> = { ...Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined)), SCREENSHOT_DEV_URL: `http://127.0.0.1:${(server.httpServer!.address() as { port: number }).port}`, SCREENSHOT_TEST_USER_DATA: join(dir, 'profile') }; delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({ args: [resolve('.')], env });
   try {
-    const settings = await app.firstWindow(); await expect(settings.getByLabel('Capture display')).toBeEnabled();
+    const settings = await app.firstWindow(); await expect(settings.getByRole('button', { name: 'Full screen', exact: true })).toBeEnabled();
     const next = app.waitForEvent('window'); await settings.getByRole('button', { name: 'Full screen', exact: true }).click();
     const page = await next; await expect(page.getByRole('button', { name: 'Insert image', exact: true })).toBeEnabled();
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
@@ -31,7 +31,7 @@ test('insert all image formats, transform, cancel, export and validate SVG', asy
       await expect(page.getByRole('status')).toHaveText('Image inserted. Drag handles to resize or rotate.');
       await expect(page.getByLabel('Image width', { exact: true })).toHaveValue('120');
       const dimensions = (await page.getByLabel('Image dimensions', { exact: true }).boundingBox())!, tools = (await page.getByLabel('Drawing tool', { exact: true }).boundingBox())!;
-      expect(dimensions.x + dimensions.width <= tools.x + 1 || dimensions.y + dimensions.height <= tools.y + 1).toBe(true);
+      expect(dimensions.y).toBeGreaterThanOrEqual(tools.y + tools.height);
       await page.getByLabel('Image width', { exact: true }).fill('180'); await page.keyboard.press('Enter');
       await expect(page.getByLabel('Image height', { exact: true })).toHaveValue('120');
       await page.getByLabel('Image width', { exact: true }).fill('999'); await page.keyboard.press('Escape');

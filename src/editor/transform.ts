@@ -11,7 +11,7 @@ export function transformBox(b: Box, t: Transform): Box { return { x: b.x * t.sx
 export function transformPoint(p: Point, t: Transform): Point { return { x: p.x * t.sx + t.x, y: p.y * t.sy + t.y }; }
 export function inversePoint(p: Point, t: Transform): Point { return { x: (p.x - t.x) / t.sx, y: (p.y - t.y) / t.sy }; }
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-export const canRotate = (a: Annotation) => a.type === 'image' || a.type === 'arrow' || a.type === 'rectangle' || a.type === 'text' || a.type === 'emoji';
+export const canRotate = (a: Annotation) => a.type === 'image' || a.type === 'line' || a.type === 'arrow' || a.type === 'rectangle' || a.type === 'text' || a.type === 'emoji';
 export const normalizeAngle = (angle: number) => ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 export const rotationOf = (a: Annotation) => canRotate(a) ? a.rotation ?? 0 : 0;
 export const boxCenter = (b: Box): Point => ({ x: (b.x + b.right) / 2, y: (b.y + b.bottom) / 2 });
@@ -42,7 +42,7 @@ export function frameBounds(a: Annotation): Box {
     const b = measureGlyph(a).bounds;
     return { x: b.x + 2, y: b.y + 2, right: Math.max(b.right - 2, b.x + 4), bottom: b.bottom - 2 };
   }
-  if (a.type === 'rectangle') {
+  if (a.type === 'rectangle' || a.type === 'line') {
     const t = a.transform ?? identity;
     return paddedBox(pointBounds([transformPoint(a.start, t), transformPoint(a.end, t)]), a.width / 2);
   }
@@ -112,7 +112,7 @@ export function resizedBox(b: Box, handle: Handle, delta: Point, uniform: boolea
 }
 function resizeLocal(a: Annotation, b: Box, handle: Handle, delta: Point, aspect: boolean): Annotation {
   const glyph = a.type === 'text' || a.type === 'emoji', uniform = glyph || (aspect && handle.length === 2);
-  const fixedStroke = a.type === 'rectangle' || a.type === 'circle' || a.type === 'freehand';
+  const fixedStroke = a.type === 'line' || a.type === 'rectangle' || a.type === 'circle' || a.type === 'freehand';
   const next = fixedStroke
     ? paddedBox(resizedBox(paddedBox(b, -a.width / 2), handle, delta, uniform), a.width / 2)
     : resizedBox(b, handle, delta, uniform);
@@ -143,7 +143,7 @@ function resizeLocal(a: Annotation, b: Box, handle: Handle, delta: Point, aspect
       const newWidth = next.right - next.x - a.width, newHeight = next.bottom - next.y - a.width;
       sx = oldWidth > 1e-8 ? newWidth / oldWidth : 1;
       sy = oldHeight > 1e-8 ? newHeight / oldHeight : 1;
-      if (a.type === 'freehand' && uniform && (oldWidth <= 1e-8 || oldHeight <= 1e-8)) {
+      if ((a.type === 'freehand' || a.type === 'line') && uniform && (oldWidth <= 1e-8 || oldHeight <= 1e-8)) {
         // A zero-length axis cannot constrain the aspect ratio of a line or dot.
         if (oldWidth > 1e-8) sx = Math.max(2 / oldWidth, 1 + (handle.includes('w') ? -delta.x : delta.x) / oldWidth);
         if (oldHeight > 1e-8) sy = Math.max(2 / oldHeight, 1 + (handle.includes('n') ? -delta.y : delta.y) / oldHeight);
