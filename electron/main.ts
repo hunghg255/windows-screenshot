@@ -12,6 +12,7 @@ import { desktopLayout, desktopPixels, desktopRegion, intersects, type DesktopLa
 import { loadSettings, persistSettings } from './settings';
 import { replaceShortcuts } from './shortcuts';
 import { CaptureSession } from './session';
+import { RecordingController } from './recording/controller';
 import { decodePng } from './image-output';
 import { readImportedImage } from './image-import';
 
@@ -21,6 +22,8 @@ const baseURL = dev ?? pathToFileURL(join(root, 'dist/index.html')).href;
 let settingsWindow: BrowserWindow | null = null;
 let captureWindow: BrowserWindow | null = null;
 let tray: Tray;
+let trayImage: NativeImage;
+let recordingTrayImage: NativeImage;
 const overlays = new Map<BrowserWindow, CaptureData>();
 let desktop: DesktopLayout | null = null;
 let selectionStart: Point | null = null;
@@ -40,6 +43,7 @@ let outputBusy = false;
 let configBusy = false;
 let importBusy = false;
 const active = new CaptureSession();
+let recording: RecordingController | null = null;
 
 function createWindow(view: string, overlay = false) {
   const win = new BrowserWindow({ width: view === 'settings' ? 680 : 1120, height: view === 'settings' ? 600 : 780, minWidth: overlay ? 1 : 640, minHeight: overlay ? 1 : 480,
@@ -72,6 +76,7 @@ function showEditor() {
   win.on('closed', () => { if (captureWindow === win) clearCapture(); });
 }
 async function beginCapture(request: CaptureRequest) {
+  if (recording?.busy) { recording.show(); throw new Error('Stop recording before taking a screenshot.'); }
   if (active.id) { captureWindow?.show(); captureWindow?.focus(); return; }
   const displays = screen.getAllDisplays();
   const layout = desktopLayout(displays);
@@ -118,8 +123,13 @@ function finishCrop(id: string, rect: unknown) {
 function report(error: unknown) { dialog.showErrorBox('Screenshot', error instanceof Error ? error.message : 'The operation failed. Please try again.'); }
 const callbacks = { full: () => { void beginCapture({ mode: 'full' }).catch(report); }, region: () => { void beginCapture({ mode: 'region' }).catch(report); } };
 function refreshTray() {
+  if (!tray || tray.isDestroyed()) return;
+  const recordingActive=!!recording?.state.busy;
+  tray.setToolTip(recordingActive?'Screenshot — recording active':'Screenshot');
+  if(trayImage && recordingTrayImage)tray.setImage(recordingActive?recordingTrayImage:trayImage);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Full screen (all displays)', click: callbacks.full }, { label: 'Select region across displays', click: callbacks.region },
+    { type: 'separator' }, ...(recording?.menu() ?? []),
     { type: 'separator' }, { label: 'Settings', click: showSettings }, { label: 'Quit', click: () => app.quit() },
   ]));
 }
@@ -145,6 +155,8 @@ else {
     ({ settings, warning } = await loadSettings(configPath));
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
+    recording = new RecordingController(baseURL, join(__dirname, 'preload.cjs'), wc => wc === settingsWindow?.webContents, () => !!active.id, refreshTray);
+    await recording.init();
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [dev
       ? `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ${dev.replace('http:', 'ws:')}; object-src 'none'; frame-src 'none'`
       : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"] } }));
@@ -211,6 +223,10 @@ else {
       } finally { outputBusy = false; }
     });
     tray = new Tray(join(root, 'assets/icon.ico'));
+    trayImage=nativeImage.createFromPath(join(root,'assets/icon.ico'));
+    const trayPixels=trayImage.resize({width:16,height:16}).toBitmap();
+    for(let y=0;y<6;y++)for(let x=10;x<16;x++){const offset=(y*16+x)*4;trayPixels[offset]=70;trayPixels[offset+1]=70;trayPixels[offset+2]=240;trayPixels[offset+3]=255;}
+    recordingTrayImage=nativeImage.createFromBitmap(trayPixels,{width:16,height:16});
     tray.setToolTip('Screenshot');
     refreshTray();
     tray.on('double-click', showSettings);
@@ -219,5 +235,5 @@ else {
     showSettings();
   }).catch(report);
   app.on('window-all-closed', () => {});
-  app.on('before-quit', () => { quitting = true; globalShortcut.unregisterAll(); clearCapture(); tray?.destroy(); });
+  app.on('before-quit', () => { if (recording?.busy) return; quitting = true; globalShortcut.unregisterAll(); clearCapture(); tray?.destroy(); });
 }

@@ -2,6 +2,12 @@
 
 A local Electron screenshot tool with global shortcuts, frozen region selection, and a pixel-resolution annotation editor. Images stay in memory until you explicitly copy or save them.
 
+## Screen recording
+
+Choose **Record screen** in the app or tray to record one display or a selected region, optionally with microphone audio. Recording supports countdown, pause/resume, mute, native shortcuts and WebM recovery after a recorder crash. Video is written to the chosen folder after you press **Start recording**.
+
+See the [recording guide](documentation/recording.md) for controls, storage requirements and benchmark commands. The full two-hour stability and hardware/player acceptance matrix remains under review.
+
 ## Download and install
 
 Open [GitHub Releases](https://github.com/hunghg255/windows-screenshot/releases), choose a release, expand **Assets**, and download `Screenshot-Setup-<version>-windows-x64.exe`. Run the installer, choose an installation folder, and launch Screenshot from its shortcut. Node.js is not required. GitHub's **Source code** ZIP/tar.gz files are not installers.
