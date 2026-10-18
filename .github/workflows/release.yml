@@ -38,20 +38,26 @@ jobs:
           architecture: x64
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - name: Install pinned dependencies and Electron
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install pinned dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
       - name: Unit tests
         run: pnpm test
-      - name: Build application
-        run: pnpm build
-      - name: Package installer without publishing
-        run: pnpm exec electron-builder --win nsis --x64 --publish never
+      - name: Build application and installer
+        run: pnpm exec mygo build
       - name: Verify installer and create checksum
         env:
+          VERSION: ${{ steps.release.outputs.version }}
           INSTALLER_NAME: ${{ steps.release.outputs.installer }}
         run: |
+          # mygo build names the installer "<Name> Setup <version> <arch>.exe".
+          New-Item -ItemType Directory -Force 'release/windows-x64' | Out-Null
+          Copy-Item -LiteralPath "build/windows-amd64/Screenshot Setup $env:VERSION amd64.exe" -Destination (Join-Path 'release/windows-x64' $env:INSTALLER_NAME)
           $installer = Get-Item -LiteralPath (Join-Path 'release/windows-x64' $env:INSTALLER_NAME)
           if ($installer.Length -eq 0) { throw 'Installer is empty' }
           $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()

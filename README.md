@@ -1,16 +1,10 @@
 # Screenshot for Windows
 
-A local Electron screenshot tool with global shortcuts, frozen region selection, and a pixel-resolution annotation editor. Images stay in memory until you explicitly copy or save them.
-
-## Screen recording
-
-Choose **Record screen** in the app or tray to record one display or a selected region, optionally with microphone audio. Recording supports countdown, pause/resume, mute, native shortcuts and WebM recovery after a recorder crash. Video is written to the chosen folder after you press **Start recording**.
-
-See the [recording guide](documentation/recording.md) for controls, storage requirements and benchmark commands. The full two-hour stability and hardware/player acceptance matrix remains under review.
+A local screenshot tool built with [MyGo](https://github.com/egoist/mygo) (Go + the system WebView2) with global shortcuts, frozen region selection, and a pixel-resolution annotation editor. Images stay in memory until you explicitly copy or save them.
 
 ## Download and install
 
-Open [GitHub Releases](https://github.com/hunghg255/windows-screenshot/releases), choose a release, expand **Assets**, and download `Screenshot-Setup-<version>-windows-x64.exe`. Run the installer, choose an installation folder, and launch Screenshot from its shortcut. Node.js is not required. GitHub's **Source code** ZIP/tar.gz files are not installers.
+Open [GitHub Releases](https://github.com/hunghg255/windows-screenshot/releases), choose a release, expand **Assets**, and download `Screenshot-Setup-<version>-windows-x64.exe`. Run the installer and launch Screenshot from its shortcut. Node.js is not required. Windows 10 needs the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), which Windows 11 includes. GitHub's **Source code** ZIP/tar.gz files are not installers.
 
 The installer is for Windows x64 and is currently unsigned, so Windows may show an unknown-publisher warning. Optional integrity check: compare `Get-FileHash .\Screenshot-Setup-<version>-windows-x64.exe -Algorithm SHA256` with the accompanying `SHA256SUMS.txt`. Updates are installed manually from Releases; in-app auto-update is not included.
 
@@ -35,27 +29,23 @@ Enable GitHub Actions and allow the publish job's `contents: write` permission u
 
 ## Development
 
-Use Node **22.12+** (tested with Node 24.21.0) and **pnpm 8.15.9** on Windows x64.
+Use Windows x64 with **Go 1.27+**, Node **22.12+** (tested with Node 24.21.0) and **pnpm 8.15.9**.
 
 ```powershell
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-If PowerShell execution policy blocks `pnpm.ps1`, use `pnpm.cmd` for every command. The postinstall script downloads the pinned Electron runtime with checksum verification and uses Windows ZIP extraction. It does not require installing a system service or changing PowerShell policy.
+If PowerShell execution policy blocks `pnpm.ps1`, use `pnpm.cmd` for every command.
 
 ```powershell
 pnpm typecheck
 pnpm test -- tests/geometry.test.ts
 pnpm test
 pnpm build
-pnpm test:e2e
-pnpm dist
 ```
 
-`pnpm dev` starts Vite and Electron, and shuts Vite down when Electron quits from the tray. Renderer changes update live; restart dev after editing main/preload. `pnpm dist` creates an unsigned Windows x64 NSIS installer in `release/windows-x64/`. For local packaging that must never publish, run `pnpm build` followed by `pnpm exec electron-builder --win nsis --x64 --publish never`.
-
-Packaging keeps only the English and Vietnamese Electron locales. Frontend libraries live in `devDependencies` because Vite bundles them into `dist`; Electron main/preload currently need only Node, Electron, and local modules. Put any future external main-process runtime dependency in `dependencies` so it is included in the installer. Build icons use `assets/logo.png`; the renderer bundles its own copy, while the native runtime assets are limited to `icon.ico` and `capture-frame.html`.
+`pnpm dev` runs `mygo dev`: it starts Vite, builds the Go app in `desktop/` and restarts it when Go code changes; renderer changes update live. It also regenerates `src/mygo.ts`, the typed client of the Go service, which is committed so typechecking works without Go. `pnpm test` runs Vitest and `go test ./desktop`. `pnpm build` creates `build/windows-amd64/Screenshot.exe` and an unsigned NSIS installer, `Screenshot Setup <version> amd64.exe`, with the frontend embedded in the executable.
 
 ## Usage
 
@@ -79,11 +69,11 @@ Annotations remain in original image pixels regardless of zoom. Blur uses a cach
 
 ## Structure and privacy
 
-`electron/` owns capture, shortcuts, native dialogs, clipboard and persistence. `shared/` defines IPC types and coordinate validation. `src/stores/editor.ts` owns editor state through Zustand; components import `useEditor` and select the state/actions they need. `src/editor/` contains geometry, hit testing and Canvas rendering. React Context is not used for application state.
+`desktop/` is the Go app: Win32 display capture, the multi-display composite, windows, tray, global shortcuts, native dialogs, clipboard and persistence. `src/bridge.ts` adapts the generated MyGo client to the `ScreenshotAPI` in `shared/`, which also holds coordinate validation. `src/stores/editor.ts` owns editor state through Zustand; components import `useEditor` and select the state/actions they need. `src/editor/` contains geometry, hit testing and Canvas rendering. React Context is not used for application state.
 
-Only shortcut settings and the last successful save directory are stored in the Electron userData folder. Capture images are not logged, uploaded, or written to temporary files. Dev/test tooling may explicitly produce screenshots as QA artifacts. The IPC bridge has no generic filesystem, command execution, or arbitrary event-channel API.
+Only shortcut settings and the last successful save directory are stored in `%AppData%\Screenshot\settings.json`. Capture images are not logged, uploaded, or written to temporary files. Dev/test tooling may explicitly produce screenshots as QA artifacts. The bound Go service has no generic filesystem, command execution, or arbitrary event-channel API.
 
-See [Windows QA](docs/windows-qa.md) for validation evidence and outstanding hardware checks. E2E tests require an unlocked interactive Windows desktop and write a test image to the clipboard. The Save integration test substitutes only the native file chooser; native dialog interaction still needs manual QA.
+See [Windows QA](docs/windows-qa.md) for validation evidence and outstanding hardware checks. The Electron Playwright E2E suite was removed with Electron; native capture, shortcuts and dialogs currently need manual QA.
 
 ## Insert image
 

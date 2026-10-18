@@ -1,7 +1,6 @@
 import { expect, it } from 'vitest';
 import { rotatedSize, sceneMatrix, scenePoint, sourcePoint, sourceVector, type QuarterTurns } from '../src/editor/screenshot-rotation';
 import { useEditor } from '../src/stores/editor';
-import { decodePng } from '../electron/image-output';
 
 it('maps non-square scene corners and reverses points and drag vectors in all orientations', () => {
   const size = { width: 320, height: 180 }, point = { x: 70, y: 40 };
@@ -30,13 +29,3 @@ it('cycles orientation without mutating annotations and resets for a new session
   s.reset(); expect(useEditor.getState().quarterTurns).toBe(0);
 });
 
-it('accepts only original or swapped PNG dimensions at the output boundary', () => {
-  const png = (w: number, h: number) => {
-    const b = Buffer.alloc(33); Buffer.from('89504e470d0a1a0a', 'hex').copy(b);
-    b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20);
-    return `data:image/png;base64,${b.toString('base64')}`;
-  };
-  expect(() => decodePng(png(320, 180), 320, 180)).not.toThrow();
-  expect(() => decodePng(png(180, 320), 320, 180)).not.toThrow();
-  for (const [w, h] of [[320, 320], [180, 180], [319, 180], [640, 360]]) expect(() => decodePng(png(w, h), 320, 180)).toThrow();
-});

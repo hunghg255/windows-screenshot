@@ -25,7 +25,6 @@ export function ShortcutSettings() {
     <Card className="mt-5 gap-4 py-4"><CardHeader className="gap-1 px-5"><CardTitle className="flex items-center gap-2"><Keyboard size={17} /> Shortcuts</CardTitle><CardDescription>Click a field, then press your key combination.</CardDescription></CardHeader><CardContent className="px-5"><FieldGroup className="gap-3">
       {(['full', 'region'] as const).map(mode => <Field orientation="horizontal" className="items-center justify-between" key={mode}><FieldLabel htmlFor={mode}>{mode === 'full' ? 'Full screen' : 'Select region'}</FieldLabel><Input className="w-52 h-9" id={mode} type="text" aria-label={`${mode} shortcut`} value={shortcuts[mode]} disabled={busy} readOnly onKeyDown={e => { if (e.key === 'Tab') return; e.preventDefault(); const key = accelerator(e); if (key) setShortcuts(s => ({ ...s, [mode]: key })); }} /></Field>)}
     </FieldGroup></CardContent><CardFooter className="justify-between gap-3 px-5"><FieldDescription>Captures all connected screens.</FieldDescription><Button variant="outline" className="h-8" onClick={() => void apply()} disabled={busy || !shortcuts.full || !shortcuts.region}>Apply shortcuts</Button></CardFooter></Card>
-    <Button variant="outline" className="mt-4" onClick={()=>void window.recording.open()}>Record screen</Button>
     <p className="settings-status" role="status">{message}</p><footer className="settings-footer">Closing this window keeps Screenshot in the tray.</footer>
   </main>;
 }
