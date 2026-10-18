@@ -15,6 +15,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { loadGlyphFonts, textError } from './glyph-layout';
 import { availableEmojis } from './emojis';
 import { SelectionHandles } from './SelectionHandles';
+import { editorShortcut } from './shortcuts';
 import { boxCenter, canRotate, frameBounds, moveAnnotation, preserveGlyphOrigin, resizeAnnotation, rotationFromPointer, rotationOf, type DragHandle, type Box } from './transform';
 export function Editor({ capture }: { capture: CaptureData }) {
   const canvas = useRef<HTMLCanvasElement>(null), area = useRef<HTMLDivElement>(null), renderer = useRef<Renderer | null>(null), draft = useRef<Drawing | null>(null);
@@ -83,9 +84,14 @@ export function Editor({ capture }: { capture: CaptureData }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if (!editing && e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable=true]')) return; if (drag.current) { if (e.key === 'Escape') { e.preventDefault(); endDrag(false); } return; } if (busy || e.isComposing) return; if (e.key === 'Escape') { if (editing) setEditing(null); else if (picker || pendingEmoji) { setPicker(false); setPendingEmoji(null); s.setTool('select'); } else if (draft.current) { draft.current = null; setRevision(v => v + 1); } else void cancel(); }
       if (editing || picker) return;
-      if (e.key === 'Delete' && !(e.target instanceof HTMLElement && (e.target.closest('input,textarea,select,[contenteditable=true]')))) useEditor.getState().remove(); };
+      const shortcut = editorShortcut(e); if (!shortcut) return; e.preventDefault(); if (e.repeat) return;
+      if ('tool' in shortcut) { if (ready && !draft.current) chooseTool(shortcut.tool); }
+      else if (shortcut.action === 'delete') useEditor.getState().remove();
+      else if (shortcut.action === 'rotate') rotateScreenshot();
+      else if (shortcut.action === 'insertImage') void insertImage();
+      else void output(shortcut.action); };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
-  }, [busy, capture.id, editing, picker, pendingEmoji]);
+  }, [busy, ready, capture.id, editing, picker, pendingEmoji]);
   function chooseTool(tool: Tool) { setPendingEmoji(null); s.setTool(tool); setPicker(tool === 'emoji'); }
   function closePanel() { setPicker(false); setPendingEmoji(null); s.setTool('select'); requestAnimationFrame(() => canvas.current?.focus()); }
   function finishText() {
@@ -143,7 +149,7 @@ export function Editor({ capture }: { capture: CaptureData }) {
     e.currentTarget.setPointerCapture(e.pointerId);
     s.select(null); const base = { id: crypto.randomUUID(), width: s.tool === 'blurStroke' ? s.blurWidth : s.width };
     draft.current = s.tool === 'blurStroke' ? { ...base, type: 'blurStroke', points: [p] } : s.tool === 'freehand' ? { ...base, type: 'freehand', color: s.color, points: [p] } : { ...base, type: s.tool, color: s.color, start: p, end: p }; setRevision(v => v + 1);
-  }} onPointerMove={e => { if (!busy && !drag.current) update(e); }} onPointerUp={e => { if (drag.current) return; update(e); if (draft.current && nonEmpty(draft.current)) s.add(draft.current); draft.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); setRevision(v => v + 1); }} onPointerCancel={() => { draft.current = null; setRevision(v => v + 1); }} />{selected && !editing && !picker && <SelectionHandles quarterTurns={s.quarterTurns} bounds={frameBounds(selected)} rotation={rotationOf(selected)} rotatable={canRotate(selected)} width={capture.width} height={capture.height} start={beginDrag} edit={() => { if (!drag.current && selected.type === 'text') setEditing({ ...selected }); }} />}</div></div>{editing && <TextComposer value={editing} change={next => setEditing(previous => previous ? preserveGlyphOrigin(previous, next) : next)} done={finishText} cancel={() => { setEditing(null); requestAnimationFrame(() => canvas.current?.focus()); }} />}{picker && <EmojiPicker options={emojiOptions} choose={emoji => { setPendingEmoji(emoji); setPicker(false); canvas.current?.focus(); }} cancel={closePanel} />}<footer><span>{display.width} × {display.height} px · Original resolution</span><span role="status" aria-atomic="true" data-success={!pendingEmoji && (message === 'Image copied to clipboard.' || message === 'PNG saved.')}>{pendingEmoji ? 'Click the image to place the emoji · Esc to discard' : message || 'Drag rotation handle: rotate · Shift: square / snap 15° · Double-click text: edit · Delete: remove · Esc: cancel'}</span></footer></main>;
+  }} onPointerMove={e => { if (!busy && !drag.current) update(e); }} onPointerUp={e => { if (drag.current) return; update(e); if (draft.current && nonEmpty(draft.current)) s.add(draft.current); draft.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); setRevision(v => v + 1); }} onPointerCancel={() => { draft.current = null; setRevision(v => v + 1); }} />{selected && !editing && !picker && <SelectionHandles quarterTurns={s.quarterTurns} bounds={frameBounds(selected)} rotation={rotationOf(selected)} rotatable={canRotate(selected)} width={capture.width} height={capture.height} start={beginDrag} edit={() => { if (!drag.current && selected.type === 'text') setEditing({ ...selected }); }} />}</div></div>{editing && <TextComposer value={editing} change={next => setEditing(previous => previous ? preserveGlyphOrigin(previous, next) : next)} done={finishText} cancel={() => { setEditing(null); requestAnimationFrame(() => canvas.current?.focus()); }} />}{picker && <EmojiPicker options={emojiOptions} choose={emoji => { setPendingEmoji(emoji); setPicker(false); canvas.current?.focus(); }} cancel={closePanel} />}<footer><span>{display.width} × {display.height} px · Original resolution</span><span role="status" aria-atomic="true" data-success={!pendingEmoji && (message === 'Image copied to clipboard.' || message === 'PNG saved.')}>{pendingEmoji ? 'Click the image to place the emoji · Esc to discard' : message || 'Ctrl+C: copy · Ctrl+S: save · Ctrl+R: rotate · Ctrl+O: insert image · Hover a tool for its key · Delete: remove · Esc: cancel'}</span></footer></main>;
 }
 
 

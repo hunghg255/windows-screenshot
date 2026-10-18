@@ -203,12 +203,17 @@ func (s *state) currentDisplays() []DesktopDisplay {
 func (s *state) beginCapture(mode CaptureMode) error {
 	s.mu.Lock()
 	if s.session != "" {
-		if s.captureWindow != nil {
-			s.captureWindow.Show()
-			s.captureWindow.Focus()
+		// A new capture replaces the current one, unless the screen is still
+		// being copied or a save or import dialog is open.
+		if s.data == nil || s.outputBusy || s.importBusy {
+			if s.captureWindow != nil {
+				s.captureWindow.Show()
+				s.captureWindow.Focus()
+			}
+			s.mu.Unlock()
+			return nil
 		}
-		s.mu.Unlock()
-		return nil
+		s.clearCapture()
 	}
 	displays := s.currentDisplays()
 	layout, err := desktopLayout(displays)
