@@ -1,12 +1,43 @@
-import { isCallError } from 'mygo-runtime';
 import type { Result, ScreenshotAPI } from '../shared/contracts';
 import { inspectImage } from '../shared/image-import';
-import { Screenshot, events } from './mygo';
+import { Screenshot, onSelectionChanged } from './myzig';
 
-// Go errors carry user-facing messages; anything else is a bridge failure.
+// Zig errors reach the page as "Screenshot.method: ErrorName".
+const messages: Record<string, string> = {
+  Unauthorized: 'Unauthorized request.',
+  SessionEnded: 'This capture session has ended.',
+  InvalidRegion: 'Select a non-empty region containing a screen.',
+  Busy: 'Please wait for the current operation.',
+  ExportBusy: 'Please wait for export.',
+  ExportUnavailable: 'Export is not available.',
+  SelectionUnavailable: 'Selection is not available.',
+  SelectionActive: 'A selection is already active.',
+  NoSelection: 'No active selection in this window.',
+  DisplaysChanged: 'Display configuration changed. Please capture again.',
+  InvalidPng: 'Invalid PNG payload.',
+  PngSizeMismatch: 'PNG dimensions do not match this capture.',
+  ClipboardUnavailable: 'Could not copy the image to the clipboard.',
+  SaveFailed: 'Could not save the image.',
+  InvalidShortcuts: 'Use two different shortcuts with a modifier and a letter, number or function key.',
+  ShortcutInUse: 'That shortcut is already in use by another app.',
+  ShortcutRestoreFailed: 'Could not restore the previous shortcuts. Choose available shortcuts.',
+  SettingsNotSaved: 'Could not save the settings.',
+  InvalidImageType: 'Choose a valid PNG, JPG, JPEG, SVG or WebP image.',
+  ImageTooLarge: 'Choose an image smaller than 20 MiB.',
+  ImageUnreadable: 'Could not read the image.',
+  NoDisplays: 'No connected displays.',
+  InvalidDisplayGeometry: 'Invalid display geometry.',
+  DesktopTooLarge: 'The combined desktop is too large (maximum 32 megapixels and 16384 pixels per edge). Reduce display resolution and try again.',
+};
+
+export function errorMessage(error: unknown) {
+  const name = error instanceof Error ? /^[\w.]+: (\w+)$/.exec(error.message)?.[1] : undefined;
+  return (name && messages[name]) || 'Operation failed. Please try again.';
+}
+
 async function settle<T>(promise: Promise<T>): Promise<Result<T>> {
   try { return { ok: true, value: await promise }; }
-  catch (error) { return { ok: false, error: isCallError(error) ? error.message : 'Operation failed. Please try again.' }; }
+  catch (error) { return { ok: false, error: errorMessage(error) }; }
 }
 
 const done = (promise: Promise<void>) => settle(promise.then(() => undefined));
@@ -27,7 +58,7 @@ const api: ScreenshotAPI = {
   settings: () => settle(Screenshot.settings()),
   updateShortcuts: value => settle(Screenshot.updateShortcuts(value)),
   selection: (id, phase) => done(Screenshot.selection(id, phase)),
-  onSelection: callback => events.selectionChanged.on(callback),
+  onSelection: callback => onSelectionChanged(callback),
   capture: request => done(Screenshot.capture(request)),
   current: () => settle(Screenshot.current()),
   crop: (id, rect) => done(Screenshot.crop(id, rect)),

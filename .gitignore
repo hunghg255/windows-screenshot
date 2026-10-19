@@ -8,5 +8,6 @@ playwright-report/
 *.log
 .cache
 /build/
-/.mygo/
-mygo_windows_*.syso
+/.myzig/
+.zig-cache/
+zig-out/

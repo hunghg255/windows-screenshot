@@ -21,13 +21,33 @@ jobs:
     defaults:
       run:
         shell: pwsh
+        working-directory: screenshot
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          path: screenshot
+          persist-credentials: false
+      # build.zig.zon depends on ../myzig.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: hunghg255/myzig
+          ref: ba422baa509cf881aa260b0cab1a95d61edef147
+          path: myzig
           persist-credentials: false
       - name: Validate tag before installing dependencies
         id: release
         run: node scripts/validate-release-tag.cjs
+      - name: Install Zig 0.17.0
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'zig.zip'
+          Invoke-WebRequest -Uri 'https://ziglang.org/download/0.17.0/zig-x86_64-windows-0.17.0.zip' -OutFile $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $env:RUNNER_TEMP
+          Join-Path $env:RUNNER_TEMP 'zig-x86_64-windows-0.17.0' | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - name: Build the myzig CLI
+        working-directory: myzig/cli
+        run: |
+          zig build -Doptimize=ReleaseSafe
+          (Resolve-Path 'zig-out/bin').Path | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
           version: 8.15.9
@@ -37,11 +57,7 @@ jobs:
           node-version: '22.22.0'
           architecture: x64
           cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache-dependency-path: screenshot/pnpm-lock.yaml
       - name: Install pinned dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck
@@ -49,15 +65,15 @@ jobs:
       - name: Unit tests
         run: pnpm test
       - name: Build application and installer
-        run: pnpm exec mygo build
+        run: myzig build --platform windows --arch x86_64
       - name: Verify installer and create checksum
         env:
           VERSION: ${{ steps.release.outputs.version }}
           INSTALLER_NAME: ${{ steps.release.outputs.installer }}
         run: |
-          # mygo build names the installer "<Name> Setup <version> <arch>.exe".
+          # myzig build names the installer "<Name> Setup <version> <arch>.exe".
           New-Item -ItemType Directory -Force 'release/windows-x64' | Out-Null
-          Copy-Item -LiteralPath "build/windows-amd64/Screenshot Setup $env:VERSION amd64.exe" -Destination (Join-Path 'release/windows-x64' $env:INSTALLER_NAME)
+          Copy-Item -LiteralPath "build/windows-x86_64/Screenshot Setup $env:VERSION x86_64.exe" -Destination (Join-Path 'release/windows-x64' $env:INSTALLER_NAME)
           $installer = Get-Item -LiteralPath (Join-Path 'release/windows-x64' $env:INSTALLER_NAME)
           if ($installer.Length -eq 0) { throw 'Installer is empty' }
           $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -67,8 +83,8 @@ jobs:
         with:
           name: windows-installer-${{ github.run_attempt }}
           path: |
-            release/windows-x64/${{ steps.release.outputs.installer }}
-            release/windows-x64/SHA256SUMS.txt
+            screenshot/release/windows-x64/${{ steps.release.outputs.installer }}
+            screenshot/release/windows-x64/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

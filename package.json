@@ -10,14 +10,14 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "mygo dev",
+    "dev": "myzig dev",
     "dev:web": "vite",
     "build:web": "vite build",
-    "generate": "mygo generate",
+    "generate": "myzig generate",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm typecheck && mygo build",
-    "test": "vitest run && go test ./desktop",
-    "release": "bumpp -r"
+    "build": "pnpm typecheck && myzig build",
+    "test": "vitest run && zig build test",
+    "release": "bumpp package.json build.zig.zon"
   },
   "devDependencies": {
     "@radix-ui/react-slot": "1.3.3",
@@ -30,8 +30,6 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "1.43.0",
-    "mygo-cli": "0.5.5",
-    "mygo-runtime": "0.5.5",
     "radix-ui": "1.6.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",

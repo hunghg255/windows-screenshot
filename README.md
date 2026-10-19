@@ -1,6 +1,6 @@
 # Screenshot for Windows
 
-A local screenshot tool built with [MyGo](https://github.com/egoist/mygo) (Go + the system WebView2) with global shortcuts, frozen region selection, and a pixel-resolution annotation editor. Images stay in memory until you explicitly copy or save them.
+A local screenshot tool built with [myzig](https://github.com/hunghg255/myzig) (Zig + the system WebView2) with global shortcuts, frozen region selection, and a pixel-resolution annotation editor. Images stay in memory until you explicitly copy or save them.
 
 ## Download and install
 
@@ -29,7 +29,7 @@ Enable GitHub Actions and allow the publish job's `contents: write` permission u
 
 ## Development
 
-Use Windows x64 with **Go 1.27+**, Node **22.12+** (tested with Node 24.21.0) and **pnpm 8.15.9**.
+Use Windows x64 with **Zig 0.17.0**, Node **22.12+** (tested with Node 24.21.0) and **pnpm 8.15.9**. Clone [myzig](https://github.com/hunghg255/myzig) next to this repository (`build.zig.zon` depends on `../myzig`), build its CLI with `cd ../myzig/cli && zig build -Doptimize=ReleaseSafe`, and put `cli/zig-out/bin` on the `PATH`. [NSIS](https://nsis.sourceforge.io/) makes the installer.
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -45,7 +45,7 @@ pnpm test
 pnpm build
 ```
 
-`pnpm dev` runs `mygo dev`: it starts Vite, builds the Go app in `desktop/` and restarts it when Go code changes; renderer changes update live. It also regenerates `src/mygo.ts`, the typed client of the Go service, which is committed so typechecking works without Go. `pnpm test` runs Vitest and `go test ./desktop`. `pnpm build` creates `build/windows-amd64/Screenshot.exe` and an unsigned NSIS installer, `Screenshot Setup <version> amd64.exe`, with the frontend embedded in the executable.
+`pnpm dev` runs `myzig dev`: it starts Vite, builds the Zig app in `desktop/` and restarts it when Zig code changes; renderer changes update live. It also regenerates `src/myzig.js` and `src/myzig.d.ts`, the client of the Zig service, which are committed so typechecking works without Zig. `pnpm test` runs Vitest and `zig build test`. `pnpm build` creates `build/windows-x86_64/Screenshot/Screenshot.exe` and an unsigned NSIS installer, `Screenshot Setup <version> x86_64.exe`, with the frontend embedded in the executable. The version comes from `build.zig.zon`; keep it equal to `package.json`'s.
 
 ## Usage
 
@@ -69,9 +69,9 @@ Annotations remain in original image pixels regardless of zoom. Blur uses a cach
 
 ## Structure and privacy
 
-`desktop/` is the Go app: Win32 display capture, the multi-display composite, windows, tray, global shortcuts, native dialogs, clipboard and persistence. `src/bridge.ts` adapts the generated MyGo client to the `ScreenshotAPI` in `shared/`, which also holds coordinate validation. `src/stores/editor.ts` owns editor state through Zustand; components import `useEditor` and select the state/actions they need. `src/editor/` contains geometry, hit testing and Canvas rendering. React Context is not used for application state.
+`desktop/` is the Zig app: Win32 display capture, the multi-display composite, windows, tray, global shortcuts, native dialogs, clipboard and persistence. `src/bridge.ts` adapts the generated myzig client to the `ScreenshotAPI` in `shared/`, which also holds coordinate validation. `src/stores/editor.ts` owns editor state through Zustand; components import `useEditor` and select the state/actions they need. `src/editor/` contains geometry, hit testing and Canvas rendering. React Context is not used for application state.
 
-Only shortcut settings and the last successful save directory are stored in `%AppData%\Screenshot\settings.json`. Capture images are not logged, uploaded, or written to temporary files. Dev/test tooling may explicitly produce screenshots as QA artifacts. The bound Go service has no generic filesystem, command execution, or arbitrary event-channel API.
+Only shortcut settings and the last successful save directory are stored in `%AppData%\Screenshot\settings.json`. Capture images are not logged, uploaded, or written to temporary files. Dev/test tooling may explicitly produce screenshots as QA artifacts. The bound Zig service has no generic filesystem, command execution, or arbitrary event-channel API.
 
 See [Windows QA](docs/windows-qa.md) for validation evidence and outstanding hardware checks. The Electron Playwright E2E suite was removed with Electron; native capture, shortcuts and dialogs currently need manual QA.
 

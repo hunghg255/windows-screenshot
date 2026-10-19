@@ -3,8 +3,8 @@ export type CaptureRequest = { mode: CaptureMode };
 export type Point = { x: number; y: number };
 export type Rect = Point & { width: number; height: number };
 export type Shortcuts = { full: string; region: string };
-export type Settings = { shortcuts: Shortcuts; lastDirectory?: string };
-export type CaptureData = { id: string; image: string; width: number; height: number; mode: CaptureMode; overlayBounds?: Rect };
+export type Settings = { shortcuts: Shortcuts; lastDirectory?: string | null };
+export type CaptureData = { id: string; image: string; width: number; height: number; mode: CaptureMode; overlayBounds?: Rect | null };
 export type Result<T = undefined> = { ok: true; value: T } | { ok: false; error: string };
 export interface ScreenshotAPI {
   importImage(id: string): Promise<Result<import('./image-import').ImportedImage | null>>;

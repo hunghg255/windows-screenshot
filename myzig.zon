@@ -1,0 +1,14 @@
+// The app, for the myzig CLI: `myzig dev`, `myzig build`, `myzig generate`.
+.{
+    .name = "Screenshot",
+    .identifier = "local.windows.screenshot",
+    .executable = "screenshot",
+    .icon = "assets/logo.png",
+    // The client of the bound services is written to src/myzig.{js,d.ts}.
+    .frontend = "src",
+    .frontend_dist = "dist",
+    .dev_url = "http://127.0.0.1:5173",
+    .dev_command = "pnpm run dev:web",
+    .build_command = "pnpm run build:web",
+    .out = "build",
+}

@@ -1,0 +1,15 @@
+.{
+    .name = .screenshot,
+    .version = "0.3.10",
+    .fingerprint = 0x58991e418b8d9f9c,
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        // A checkout of https://github.com/hunghg255/myzig next to this one.
+        .myzig = .{ .path = "../myzig" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "desktop",
+    },
+}
